@@ -31,11 +31,23 @@ export const completeRegistration = async (req, res) => {
     }
 
     // Biometric data is REQUIRED
-    if (!fingerprintPublicKey || !faceImage || !faceId) {
+    // faceImage is now optional - we only need faceId (privacy: no images stored)
+    console.log('🔍 Backend completeRegistration - Checking biometric data...');
+    console.log('fingerprintPublicKey:', fingerprintPublicKey ? 'exists' : 'null/undefined');
+    console.log('faceId:', faceId ? 'exists' : 'null/undefined');
+    console.log('fingerprintPublicKey type:', typeof fingerprintPublicKey);
+    console.log('faceId type:', typeof faceId);
+    console.log('fingerprintPublicKey length:', fingerprintPublicKey?.length);
+    console.log('faceId length:', faceId?.length);
+    
+    if (!fingerprintPublicKey || !faceId) {
+      console.log('❌ Validation failed - missing biometric data');
       return res.status(400).json({ 
         message: 'يجب إكمال إعداد Fingerprint و Face Recognition' 
       });
     }
+    
+    console.log('✅ Biometric data validation passed');
 
     // Check if user exists
     const existingUser = await User.findOne({
@@ -45,6 +57,30 @@ export const completeRegistration = async (req, res) => {
     if (existingUser) {
       return res.status(400).json({ 
         message: 'البريد الإلكتروني أو رقم الموظف موجود مسبقاً' 
+      });
+    }
+
+    // Generate faceId function (same as frontend)
+    const generateFaceId = (base64Image) => {
+      const sample1 = base64Image.substring(0, 100);
+      const sample2 = base64Image.substring(Math.floor(base64Image.length / 2), Math.floor(base64Image.length / 2) + 100);
+      const sample3 = base64Image.substring(Math.max(0, base64Image.length - 100));
+      const combined = sample1 + sample2 + sample3;
+      const hash = combined.split('').reduce((acc, char) => {
+        return ((acc << 5) - acc) + char.charCodeAt(0);
+      }, 0);
+      return Math.abs(hash).toString(16);
+    };
+
+    // Generate faceId from faceImage (use provided faceId or generate from image)
+    const newFaceId = faceId || generateFaceId(faceImage);
+    
+    // Check for duplicate face (same person registering with different credentials)
+    const existingFaceUser = await User.findOne({ faceId: newFaceId });
+    
+    if (existingFaceUser) {
+      return res.status(400).json({ 
+        message: 'هذا الوجه مسجل مسبقاً. يرجى استخدام حسابك الحالي أو تسجيل الدخول بالوجه.' 
       });
     }
 
@@ -60,8 +96,8 @@ export const completeRegistration = async (req, res) => {
       profileImage: profileImage || null, // Store profile image (Base64)
       branch: branch || null, // Store location/branch reference
       fingerprintData: fingerprintPublicKey, // Store fingerprint ID (publicKey)
-      faceImage: faceImage, // Store face image (Base64)
-      faceId: faceId, // Store face ID (hash)
+      faceImage: faceImage || null, // Face image is optional (privacy: no images stored)
+      faceId: newFaceId, // Store face ID (hash) - use generated one
       faceIdEnabled: true,
       biometricType: biometricType || 'TouchID'
     };
@@ -427,30 +463,33 @@ export const loginWithBiometric = async (req, res) => {
       });
     }
 
-    // Method 2: Login with Face Recognition (faceImage only or with email/employeeNumber)
-    if (faceImage && !fingerprintPublicKey) {
-    if (!faceImage) {
-      return res.status(400).json({ 
-        message: 'يرجى إرسال صورة الوجه' 
-      });
-    }
-
-      // Generate faceId from faceImage (same algorithm as frontend)
-      // Use more of the image data to make it more unique
-      const generateFaceId = (base64Image) => {
-        // Use first 200 characters and sample from middle and end for better uniqueness
-        const sample1 = base64Image.substring(0, 100);
-        const sample2 = base64Image.substring(Math.floor(base64Image.length / 2), Math.floor(base64Image.length / 2) + 100);
-        const sample3 = base64Image.substring(Math.max(0, base64Image.length - 100));
-        const combined = sample1 + sample2 + sample3;
-        
-        const hash = combined.split('').reduce((acc, char) => {
-          return ((acc << 5) - acc) + char.charCodeAt(0);
-        }, 0);
-        return Math.abs(hash).toString(16);
-      };
-
-      const faceId = generateFaceId(faceImage);
+    // Method 2: Login with Face Recognition (faceId or faceImage with email/employeeNumber)
+    // Prefer faceId (no image) for privacy, fallback to faceImage for backward compatibility
+    const faceIdFromRequest = req.body.faceId;
+    if ((faceIdFromRequest || faceImage) && !fingerprintPublicKey) {
+      // Get faceId - either from request body (preferred, no image) or generate from faceImage
+      let faceId = faceIdFromRequest;
+      
+      // If faceId not provided, generate from faceImage (fallback for backward compatibility)
+      if (!faceId && faceImage) {
+        const generateFaceId = (base64Image) => {
+          const sample1 = base64Image.substring(0, 100);
+          const sample2 = base64Image.substring(Math.floor(base64Image.length / 2), Math.floor(base64Image.length / 2) + 100);
+          const sample3 = base64Image.substring(Math.max(0, base64Image.length - 100));
+          const combined = sample1 + sample2 + sample3;
+          const hash = combined.split('').reduce((acc, char) => {
+            return ((acc << 5) - acc) + char.charCodeAt(0);
+          }, 0);
+          return Math.abs(hash).toString(16);
+        };
+        faceId = generateFaceId(faceImage);
+      }
+      
+      if (!faceId) {
+        return res.status(400).json({ 
+          message: 'يرجى إرسال faceId أو صورة الوجه' 
+        });
+      }
 
       // Try to find user by faceId first (face-only login)
       // If faceId matches, login without requiring email/employeeNumber

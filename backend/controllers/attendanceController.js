@@ -2,6 +2,7 @@ import Attendance from '../modles/Attendance.js';
 import Location from '../modles/Location.js';
 import Holiday from '../modles/Holiday.js';
 import QRCode from '../modles/QRCode.js';
+import User from '../modles/User.js';
 import { isWithinRadius, findNearestLocation } from '../utils/geofencing.js';
 import {
   calculateLateMinutes,
@@ -16,7 +17,22 @@ import { sendLateNotification } from '../utils/notifications.js';
 export const checkIn = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { latitude, longitude, address, faceIdVerified, qrCodeId } = req.body;
+    const { latitude, longitude, address, faceIdVerified, faceId, qrCodeId } = req.body;
+    
+    // Verify faceId if provided (face check-in)
+    if (faceId) {
+      const user = await User.findById(userId);
+      if (!user || !user.faceId) {
+        return res.status(400).json({ 
+          message: 'لم يتم تسجيل بيانات الوجه لهذا المستخدم' 
+        });
+      }
+      if (user.faceId !== faceId) {
+        return res.status(401).json({ 
+          message: 'الوجه غير متطابق مع المستخدم المسجل' 
+        });
+      }
+    }
 
     if (!latitude || !longitude) {
       return res.status(400).json({ 
@@ -86,7 +102,7 @@ export const checkIn = async (req, res) => {
         new Location({
           latitude: 32.014206,   // Default office latitude
           longitude: 35.873015,  // Default office longitude
-          radius: 10000,         // 10km radius
+          radius: 50,            // 50 meters radius around office
           type: 'main',
           name: 'Default Office',
           isActive: true,
@@ -202,7 +218,22 @@ export const checkIn = async (req, res) => {
 export const checkOut = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { latitude, longitude, address, faceIdVerified, qrCodeId } = req.body;
+    const { latitude, longitude, address, faceIdVerified, faceId, qrCodeId } = req.body;
+    
+    // Verify faceId if provided (face check-out)
+    if (faceId) {
+      const user = await User.findById(userId);
+      if (!user || !user.faceId) {
+        return res.status(400).json({ 
+          message: 'لم يتم تسجيل بيانات الوجه لهذا المستخدم' 
+        });
+      }
+      if (user.faceId !== faceId) {
+        return res.status(401).json({ 
+          message: 'الوجه غير متطابق مع المستخدم المسجل' 
+        });
+      }
+    }
 
     if (!latitude || !longitude) {
       return res.status(400).json({ 
