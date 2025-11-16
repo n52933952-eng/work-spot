@@ -62,8 +62,8 @@ server.listen(process.env.PORT || 5000, () => {
 })
 
 
-app.use(express.static(path.join(__dirname, 'backend', 'dist')))
+app.use(express.static(path.join(__dirname, '/frontent/dist')))
 
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'backend', 'dist', 'index.html'))
+app.get('*',(req,res) => {
+    res.sendFile(path.join(__dirname, 'frontent', 'dist', 'index.html'))
 })

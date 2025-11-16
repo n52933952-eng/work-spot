@@ -4,10 +4,9 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-
-     "dev":"nodemon backend/index.js",
-     "start": "node backend/index.js",
-  "build": "npm install && npm install --prefix ./frontent && npm run build --prefix ./frontent && rm -rf backend/dist && cp -r frontent/dist backend/",
+ "dev":"nodemon backend/index.js",
+    "start": "node backend/index.js",
+    "build":"npm install && npm install --prefix frontent && npm run build --prefix frontent",
     "setup:location": "node backend/scripts/createDefaultLocation.js" 
   },
   "keywords": [],
