@@ -641,8 +641,11 @@ export const loginWithBiometric = async (req, res) => {
 
     // Method 2: Login with Face Recognition (faceId or faceImage with email/employeeNumber)
     // Prefer faceId (no image) for privacy, fallback to faceImage for backward compatibility
+    // NOTE: fingerprintPublicKey can be sent WITH faceId for security verification (device check)
     const faceIdFromRequest = req.body.faceId;
-    if ((faceIdFromRequest || faceImage) && !fingerprintPublicKey) {
+    if (faceIdFromRequest || faceImage) {
+      // If fingerprintPublicKey is also provided, it's for security verification (device check)
+      // We still process this as face login, but verify the device matches
       // Get faceId - either from request body (preferred, no image) or generate from faceImage
       let faceId = faceIdFromRequest;
       
@@ -675,6 +678,24 @@ export const loginWithBiometric = async (req, res) => {
         });
 
         if (user) {
+          // SECURITY CHECK: If user has fingerprintPublicKey (registered on a device),
+          // verify that the current device's fingerprintPublicKey matches
+          // This prevents other users from logging in from a device that's not theirs
+          const currentDeviceFingerprint = req.body.fingerprintPublicKey; // Optional: sent from frontend
+          
+          if (user.fingerprintData && currentDeviceFingerprint) {
+            // User is registered on a device - verify it's the same device
+            if (user.fingerprintData !== currentDeviceFingerprint) {
+              console.log('⚠️ Security: Face login attempt from different device!');
+              console.log(`   User's registered device fingerprintPublicKey: ${user.fingerprintData.substring(0, 50)}...`);
+              console.log(`   Current device fingerprintPublicKey: ${currentDeviceFingerprint.substring(0, 50)}...`);
+              return res.status(403).json({ 
+                message: 'لا يمكن تسجيل الدخول من هذا الجهاز. يرجى استخدام جهازك المسجل أو تسجيل الدخول بالبريد الإلكتروني وكلمة المرور.' 
+              });
+            }
+            console.log('✅ Security: Face login from correct device verified');
+          }
+          
           // Verify face is enabled
           if (!user.faceIdEnabled) {
             return res.status(403).json({ 
