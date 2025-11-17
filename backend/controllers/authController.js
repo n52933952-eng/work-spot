@@ -771,7 +771,10 @@ export const loginWithBiometric = async (req, res) => {
           if (candidateUser.faceLandmarks) {
             const similarity = compareFaces(incomingFaceData, candidateUser.faceLandmarks);
             console.log(`  - User ${candidateUser.email || candidateUser.employeeNumber}: ${(similarity * 100).toFixed(2)}% similarity`);
-            if (similarity >= 0.75 && similarity > bestSimilarity) {
+            // Increased threshold to 94.55% for stricter face matching (prevents false matches)
+            // This ensures only the exact registered person can login
+            // Note: If legitimate users fail, we may need to improve the comparison algorithm
+            if (similarity >= 0.9455 && similarity > bestSimilarity) {
               bestMatch = candidateUser;
               bestSimilarity = similarity;
             }

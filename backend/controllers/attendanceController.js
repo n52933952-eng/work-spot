@@ -75,14 +75,15 @@ const verifyFaceForAttendance = async (userId, faceId, faceLandmarks) => {
   const similarity = compareFaces(incomingFaceData, user.faceLandmarks);
   console.log(`🔍 Attendance face similarity: ${(similarity * 100).toFixed(2)}%`);
   
-  if (similarity >= 0.75) {
+  // Increased threshold to 94.55% for stricter face matching (prevents false matches)
+  if (similarity >= 0.9455) {
     console.log(`✅ Face verified for attendance: ${(similarity * 100).toFixed(2)}% similarity`);
     return {
       verified: true,
       message: null,
     };
   } else {
-    console.log(`❌ Face similarity too low: ${(similarity * 100).toFixed(2)}% < 75%`);
+    console.log(`❌ Face similarity too low: ${(similarity * 100).toFixed(2)}% < 94.55%`);
     return {
       verified: false,
       message: 'الوجه غير متطابق مع المستخدم المسجل',
