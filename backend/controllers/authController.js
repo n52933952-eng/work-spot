@@ -146,14 +146,30 @@ export const completeRegistration = async (req, res) => {
       });
     }
     
-    // SECURITY: Check for duplicate fingerprint (same device/fingerprint registering with different credentials)
+    // SECURITY: Only ONE user can register per device
+    // fingerprintPublicKey is device-specific, so if it already exists, someone already registered on this device
+    // This prevents anyone else (friend, etc.) from registering on your phone
     const existingFingerprintUser = await User.findOne({ fingerprintData: fingerprintPublicKey });
     
     if (existingFingerprintUser) {
+      // Check if it's the same person trying to register again (same face)
+      if (normalizedLandmarks && existingFingerprintUser.faceLandmarks) {
+        const similarity = compareFaces(normalizedLandmarks, existingFingerprintUser.faceLandmarks);
+        if (similarity >= 0.75) {
+          // Same person trying to register again on same device
+          return res.status(400).json({ 
+            message: 'أنت مسجل بالفعل على هذا الجهاز. يرجى تسجيل الدخول بدلاً من التسجيل مرة أخرى.' 
+          });
+        }
+      }
+      
+      // Different person trying to register on same device - BLOCKED
       return res.status(400).json({ 
-        message: 'هذه البصمة مسجلة مسبقاً. يرجى استخدام حسابك الحالي أو تسجيل الدخول بالبصمة.' 
+        message: 'هذا الجهاز مستخدم بالفعل. يرجى استخدام جهاز آخر أو تسجيل الدخول بالحساب المسجل على هذا الجهاز.' 
       });
     }
+    
+    console.log('✅ Fingerprint check: Device is available for registration');
 
     // Create user with biometric data
     const userData = {
@@ -497,8 +513,9 @@ export const loginWithBiometric = async (req, res) => {
     let user = null;
 
     // Method 1: Login with Fingerprint (fingerprintPublicKey only)
+    // NOTE: Only ONE user per device is allowed, so we can directly find the user
     if (fingerprintPublicKey && !faceImage) {
-      // Find user by fingerprintPublicKey (stored as fingerprintData in database)
+      // Find user by fingerprintPublicKey (only one user per device)
       user = await User.findOne({
         fingerprintData: fingerprintPublicKey
       });
