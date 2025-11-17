@@ -109,9 +109,13 @@ export const completeRegistration = async (req, res) => {
     
     // SECURITY CHECK 1: Check for duplicate fingerprint FIRST (device-specific check)
     // This is faster and catches device-level duplicates immediately
+    console.log('🔍 Checking for duplicate fingerprintPublicKey...');
+    console.log('   fingerprintPublicKey (first 50 chars):', fingerprintPublicKey ? fingerprintPublicKey.substring(0, 50) + '...' : 'null');
+    
     const existingFingerprintUser = await User.findOne({ fingerprintData: fingerprintPublicKey });
     
     if (existingFingerprintUser) {
+      console.log('✅ Found existing user with same fingerprintPublicKey!');
       console.log('⚠️ Duplicate fingerprintPublicKey detected!');
       console.log(`   Existing user: ${existingFingerprintUser.email || existingFingerprintUser.fullName}`);
       
@@ -161,7 +165,11 @@ export const completeRegistration = async (req, res) => {
       });
     }
     
-    console.log('✅ Fingerprint check: Device is available for registration');
+    console.log('✅ Fingerprint check: No duplicate fingerprintPublicKey found - device is available');
+    console.log('   This means either:');
+    console.log('   1. First time registering on this device, OR');
+    console.log('   2. Different device (different fingerprintPublicKey)');
+    console.log('   Proceeding to face check...');
     
     // SECURITY CHECK 2: Check for duplicate face using LANDMARK-BASED similarity (correct method)
     // Get all users with faceLandmarks to compare
@@ -188,16 +196,38 @@ export const completeRegistration = async (req, res) => {
             console.log(`   Existing user fingerprintPublicKey: ${user.fingerprintData ? 'exists' : 'null'}`);
             
             // Check if this is the same device (same fingerprintPublicKey)
+            // This handles the case where fingerprintPublicKey might be different (keys recreated)
+            // but face matches and we need to check if it's the same device
             if (user.fingerprintData === fingerprintPublicKey) {
               // Same person, same device - already registered
+              console.log('   ✅ Same person, same device detected (fingerprintPublicKey matches)');
               return res.status(400).json({ 
                 message: 'أنت مسجل بالفعل على هذا الجهاز. يرجى تسجيل الدخول بدلاً من التسجيل مرة أخرى.' 
               });
             } else {
-              // Same person, different device - face already registered
-              return res.status(400).json({ 
-                message: 'هذا الوجه مسجل مسبقاً. يرجى استخدام حسابك الحالي أو تسجيل الدخول بالوجه.' 
-              });
+              // Same person detected, but fingerprintPublicKey is different
+              // This could mean:
+              // 1. Different device (same person, different phone)
+              // 2. Same device but keys were recreated (shouldn't happen, but possible)
+              console.log('   ⚠️ Same person detected, but fingerprintPublicKey is different');
+              console.log(`   Existing user fingerprintPublicKey: ${user.fingerprintData ? user.fingerprintData.substring(0, 50) + '...' : 'null'}`);
+              console.log(`   New fingerprintPublicKey: ${fingerprintPublicKey ? fingerprintPublicKey.substring(0, 50) + '...' : 'null'}`);
+              
+              // Check if existing user has fingerprintPublicKey (means they registered with biometric)
+              if (user.fingerprintData) {
+                // User already registered with biometric (fingerprint) on another device
+                // Show message that includes both face and fingerprint
+                console.log('   Existing user has fingerprintPublicKey - they registered with biometric');
+                return res.status(400).json({ 
+                  message: 'أنت مسجل بالفعل (الوجه والبصمة مسجلان). يرجى تسجيل الدخول بدلاً من التسجيل مرة أخرى.' 
+                });
+              } else {
+                // Existing user doesn't have fingerprintPublicKey (registered without biometric?)
+                // Just show face duplicate message
+                return res.status(400).json({ 
+                  message: 'هذا الوجه مسجل مسبقاً. يرجى استخدام حسابك الحالي أو تسجيل الدخول بالوجه.' 
+                });
+              }
             }
           }
         }
