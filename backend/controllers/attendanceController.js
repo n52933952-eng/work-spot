@@ -131,7 +131,7 @@ export const checkIn = async (req, res) => {
         new Location({
           latitude: 32.014206,   // Default office latitude
           longitude: 35.873015,  // Default office longitude
-          radius: 50,            // 50 meters radius around office
+          radius: 10000,         // Expanded radius (10 km) for testing
           type: 'main',
           name: 'Default Office',
           isActive: true,
