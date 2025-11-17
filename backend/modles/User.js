@@ -64,7 +64,28 @@ const userSchema = new mongoose.Schema({
     default: null
   },
   faceId: {
-    type: String, // Face ID (hash) for face recognition
+    type: String, // Face ID (hash) for face recognition (kept for backward compatibility)
+    default: null
+  },
+  faceLandmarks: {
+    type: mongoose.Schema.Types.Mixed, // Store normalized face landmarks for similarity matching
+    // Structure: {
+    //   leftEye: { x: number, y: number },
+    //   rightEye: { x: number, y: number },
+    //   noseBase: { x: number, y: number },
+    //   mouthLeft: { x: number, y: number },
+    //   mouthRight: { x: number, y: number },
+    //   mouthBottom: { x: number, y: number },
+    //   eyeDistance: number, // Normalized eye distance
+    //   faceWidth: number, // Normalized face width
+    //   faceHeight: number, // Normalized face height
+    //   noseToEyeDistance: number, // Normalized nose-to-eye distance
+    //   mouthToNoseDistance: number, // Normalized mouth-to-nose distance
+    //   faceAspectRatio: number, // width/height
+    //   headEulerAngleX: number, // Head rotation X
+    //   headEulerAngleY: number, // Head rotation Y
+    //   headEulerAngleZ: number, // Head rotation Z
+    // }
     default: null
   },
   fingerprintData: {

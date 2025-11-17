@@ -1,6 +1,7 @@
 import User from '../modles/User.js';
 import Attendance from '../modles/Attendance.js';
 import GenerateToken from '../utils/GenerateToken.js';
+import { extractNormalizedLandmarks, compareFaces } from '../utils/faceLandmarkSimilarity.js';
 
 // Complete registration with biometric data
 export const completeRegistration = async (req, res) => {
@@ -20,6 +21,8 @@ export const completeRegistration = async (req, res) => {
       fingerprintPublicKey, // Fingerprint ID
       faceImage, // Base64 image
       faceId, // Face ID (hash)
+      faceFeatures, // Face features from ML Kit (contains landmarks)
+      faceData, // Full face detection data from ML Kit
       biometricType 
     } = req.body;
 
@@ -75,12 +78,80 @@ export const completeRegistration = async (req, res) => {
     // Generate faceId from faceImage (use provided faceId or generate from image)
     const newFaceId = faceId || generateFaceId(faceImage);
     
-    // Check for duplicate face (same person registering with different credentials)
-    const existingFaceUser = await User.findOne({ faceId: newFaceId });
+    // Extract normalized landmarks from face data for similarity matching
+    // This is the CORRECT way to detect duplicate faces (landmark-based, not hash-based)
+    let normalizedLandmarks = null;
+    try {
+      // Try to extract landmarks from faceData (full ML Kit detection result)
+      if (faceData && (Array.isArray(faceData) ? faceData[0] : faceData)) {
+        const face = Array.isArray(faceData) ? faceData[0] : faceData;
+        normalizedLandmarks = extractNormalizedLandmarks(face);
+      }
+      // Fallback: try faceFeatures
+      else if (faceFeatures && faceFeatures.landmarks) {
+        normalizedLandmarks = extractNormalizedLandmarks({
+          landmarks: faceFeatures.landmarks,
+          frame: faceFeatures.frame,
+          headEulerAngleX: faceFeatures.headEulerAngleX,
+          headEulerAngleY: faceFeatures.headEulerAngleY,
+          headEulerAngleZ: faceFeatures.headEulerAngleZ,
+        });
+      }
+      
+      if (normalizedLandmarks) {
+        console.log('✅ Extracted normalized landmarks for duplicate checking');
+      } else {
+        console.log('⚠️ Could not extract landmarks - will use hash-based check as fallback');
+      }
+    } catch (error) {
+      console.error('Error extracting landmarks:', error);
+    }
     
-    if (existingFaceUser) {
+    // SECURITY: Check for duplicate face using LANDMARK-BASED similarity (correct method)
+    // Get all users with faceLandmarks to compare
+    const allUsersWithLandmarks = await User.find({ 
+      faceLandmarks: { $exists: true, $ne: null } 
+    }).select('faceLandmarks _id email fullName');
+    
+    // If we have landmarks, use landmark-based comparison (RELIABLE)
+    if (normalizedLandmarks && allUsersWithLandmarks.length > 0) {
+      console.log(`🔍 Checking ${allUsersWithLandmarks.length} users with landmarks for duplicates...`);
+      
+      for (const user of allUsersWithLandmarks) {
+        if (user.faceLandmarks) {
+          // Compare landmarks using similarity function
+          // user.faceLandmarks is already normalized, so pass it directly
+          const similarity = compareFaces(normalizedLandmarks, user.faceLandmarks);
+          
+          // Threshold: 0.75 (75%) similarity = same face
+          // This is reliable because landmarks are stable for the same person
+          if (similarity >= 0.75) {
+            console.log(`⚠️ Duplicate face detected using landmarks!`);
+            console.log(`   Similarity: ${(similarity * 100).toFixed(1)}%`);
+            console.log(`   Existing user: ${user.email || user.fullName}`);
+            return res.status(400).json({ 
+              message: 'هذا الوجه مسجل مسبقاً. يرجى استخدام حسابك الحالي أو تسجيل الدخول بالوجه.' 
+            });
+          }
+        }
+      }
+      console.log('✅ No duplicate faces found using landmark comparison');
+    }
+    
+    // Fallback: Check exact faceId match (for backward compatibility)
+    const existingFaceUserExact = await User.findOne({ faceId: newFaceId });
+    if (existingFaceUserExact) {
       return res.status(400).json({ 
         message: 'هذا الوجه مسجل مسبقاً. يرجى استخدام حسابك الحالي أو تسجيل الدخول بالوجه.' 
+      });
+    }
+    
+    // SECURITY: Check for duplicate fingerprint (same device/fingerprint registering with different credentials)
+    const existingFingerprintUser = await User.findOne({ fingerprintData: fingerprintPublicKey });
+    
+    if (existingFingerprintUser) {
+      return res.status(400).json({ 
+        message: 'هذه البصمة مسجلة مسبقاً. يرجى استخدام حسابك الحالي أو تسجيل الدخول بالبصمة.' 
       });
     }
 
@@ -97,10 +168,17 @@ export const completeRegistration = async (req, res) => {
       branch: branch || null, // Store location/branch reference
       fingerprintData: fingerprintPublicKey, // Store fingerprint ID (publicKey)
       faceImage: faceImage || null, // Face image is optional (privacy: no images stored)
-      faceId: newFaceId, // Store face ID (hash) - use generated one
+      faceId: newFaceId, // Store face ID (hash) - kept for backward compatibility
+      faceLandmarks: normalizedLandmarks || null, // Store normalized landmarks for reliable face matching
       faceIdEnabled: true,
       biometricType: biometricType || 'TouchID'
     };
+    
+    if (normalizedLandmarks) {
+      console.log('✅ Saving normalized landmarks to database');
+    } else {
+      console.log('⚠️ No landmarks to save - user will only have faceId hash');
+    }
 
     const user = await User.create(userData);
 
