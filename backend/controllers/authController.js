@@ -611,7 +611,10 @@ export const loginWithBiometric = async (req, res) => {
     console.log('  - fingerprintPublicKey:', !!fingerprintPublicKey, fingerprintPublicKey ? fingerprintPublicKey.substring(0, 20) + '...' : 'null');
     console.log('  - faceId:', !!faceId, faceId || 'null');
     console.log('  - faceImage:', !!faceImage);
-    console.log('  - faceLandmarks:', !!faceLandmarks, faceLandmarks ? (typeof faceLandmarks === 'object' ? 'object' : 'other') : 'null');
+    console.log('  - faceLandmarks type:', typeof faceLandmarks);
+    console.log('  - faceLandmarks keys:', faceLandmarks && typeof faceLandmarks === 'object' ? Object.keys(faceLandmarks) : 'null');
+    console.log('  - faceLandmarks.faceData:', faceLandmarks?.faceData ? (Array.isArray(faceLandmarks.faceData) ? `array[${faceLandmarks.faceData.length}]` : typeof faceLandmarks.faceData) : 'null');
+    console.log('  - faceLandmarks.faceFeatures:', !!faceLandmarks?.faceFeatures);
     console.log('  - email:', email);
     console.log('  - employeeNumber:', employeeNumber);
 
@@ -620,8 +623,8 @@ export const loginWithBiometric = async (req, res) => {
     // Check if faceLandmarks is a valid object with face data
     // Frontend sends: { faceData: [...], faceFeatures: {...}, faceId: "..." }
     const hasValidFaceLandmarks = faceLandmarks && typeof faceLandmarks === 'object' && (
-      faceLandmarks.faceData || 
-      faceLandmarks.faceFeatures?.landmarks || 
+      (faceLandmarks.faceData && Array.isArray(faceLandmarks.faceData) && faceLandmarks.faceData.length > 0) ||
+      (faceLandmarks.faceFeatures && faceLandmarks.faceFeatures.landmarks) ||
       faceLandmarks.landmarks ||
       (Array.isArray(faceLandmarks) && faceLandmarks.length > 0)
     );
@@ -630,6 +633,8 @@ export const loginWithBiometric = async (req, res) => {
     console.log('📊 Login method detection:');
     console.log('  - hasFingerprint:', hasFingerprint);
     console.log('  - hasValidFaceLandmarks:', hasValidFaceLandmarks);
+    console.log('  - hasFaceId:', !!faceId);
+    console.log('  - hasFaceImage:', !!faceImage);
     console.log('  - hasFace:', hasFace);
     console.log('  - Will use:', hasFingerprint && !hasFace ? 'FINGERPRINT-ONLY' : hasFace ? 'FACE' : 'UNKNOWN');
 
@@ -640,8 +645,10 @@ export const loginWithBiometric = async (req, res) => {
     // 4. Email/password → traditional login (handled separately)
 
     // Step 1: Find user based on what's provided
+    // IMPORTANT: If face data is provided (even with fingerprint), we MUST verify face
+    // This prevents friends from using your device with their face
     if (hasFingerprint && !hasFace) {
-      console.log('🔑 Using FINGERPRINT-ONLY login path');
+      console.log('🔑 Using FINGERPRINT-ONLY login path (no face data provided)');
       // Method 1: Fingerprint ONLY login
       user = await User.findOne({
         fingerprintData: fingerprintPublicKey
