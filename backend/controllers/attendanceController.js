@@ -23,26 +23,48 @@ const verifyFaceForAttendance = async (userId, faceId, faceLandmarks) => {
     };
   }
 
-  let verified = false;
-
+  // PRIORITY 1: Use landmark-based comparison (RELIABLE - required for new registrations)
   if (faceLandmarks && user.faceLandmarks) {
     const similarity = compareFaces(faceLandmarks, user.faceLandmarks);
+    console.log(`🔍 Attendance face similarity: ${(similarity * 100).toFixed(2)}%`);
     if (similarity >= 0.75) {
-      verified = true;
+      console.log('✅ Face verified for attendance (landmark-based)');
+      return {
+        verified: true,
+        message: null,
+      };
     } else {
-      console.log('❌ Face similarity too low for attendance:', similarity);
+      console.log(`❌ Face similarity too low for attendance: ${(similarity * 100).toFixed(2)}% < 75%`);
+      return {
+        verified: false,
+        message: 'الوجه غير متطابق مع المستخدم المسجل',
+      };
     }
   }
 
-  if (!verified && faceId && user.faceId) {
+  // PRIORITY 2: Fallback to faceId hash (only if landmarks not available - legacy users)
+  // This is less secure but needed for backward compatibility
+  if (faceId && user.faceId) {
     if (user.faceId === faceId) {
-      verified = true;
+      console.log('⚠️ Face verified using hash (fallback - landmarks not available)');
+      return {
+        verified: true,
+        message: null,
+      };
+    } else {
+      console.log('❌ FaceId hash mismatch');
+      return {
+        verified: false,
+        message: 'الوجه غير متطابق مع المستخدم المسجل',
+      };
     }
   }
 
+  // If we have no way to verify (no landmarks, no faceId), reject
+  console.log('❌ No face data provided for verification');
   return {
-    verified,
-    message: verified ? null : 'الوجه غير متطابق مع المستخدم المسجل',
+    verified: false,
+    message: 'يرجى إرسال بيانات الوجه للتحقق',
   };
 };
 
@@ -50,17 +72,26 @@ const verifyFaceForAttendance = async (userId, faceId, faceLandmarks) => {
 export const checkIn = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { latitude, longitude, address, faceId, faceLandmarks, qrCodeId } = req.body;
+    const { latitude, longitude, address, faceId, faceLandmarks, faceIdVerified, qrCodeId } = req.body;
     
+    // If faceIdVerified is true OR face data is provided, face verification is REQUIRED
     let verifiedFace = false;
-    if (faceId || faceLandmarks) {
+    if (faceIdVerified || faceId || faceLandmarks) {
+      if (!faceId && !faceLandmarks) {
+        return res.status(400).json({ 
+          message: 'يرجى إرسال بيانات الوجه للتحقق (faceId أو faceLandmarks)' 
+        });
+      }
+      
       const verification = await verifyFaceForAttendance(userId, faceId, faceLandmarks);
       if (!verification.verified) {
+        console.log(`❌ Check-in rejected: ${verification.message}`);
         return res.status(401).json({ 
           message: verification.message || 'الوجه غير متطابق مع المستخدم المسجل' 
         });
       }
       verifiedFace = true;
+      console.log('✅ Face verified for check-in');
     }
 
     if (!latitude || !longitude) {
@@ -247,17 +278,26 @@ export const checkIn = async (req, res) => {
 export const checkOut = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { latitude, longitude, address, faceId, faceLandmarks, qrCodeId } = req.body;
+    const { latitude, longitude, address, faceId, faceLandmarks, faceIdVerified, qrCodeId } = req.body;
     
+    // If faceIdVerified is true OR face data is provided, face verification is REQUIRED
     let verifiedFace = false;
-    if (faceId || faceLandmarks) {
+    if (faceIdVerified || faceId || faceLandmarks) {
+      if (!faceId && !faceLandmarks) {
+        return res.status(400).json({ 
+          message: 'يرجى إرسال بيانات الوجه للتحقق (faceId أو faceLandmarks)' 
+        });
+      }
+      
       const verification = await verifyFaceForAttendance(userId, faceId, faceLandmarks);
       if (!verification.verified) {
+        console.log(`❌ Check-out rejected: ${verification.message}`);
         return res.status(401).json({ 
           message: verification.message || 'الوجه غير متطابق مع المستخدم المسجل' 
         });
       }
       verifiedFace = true;
+      console.log('✅ Face verified for check-out');
     }
 
     if (!latitude || !longitude) {
