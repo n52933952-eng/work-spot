@@ -644,12 +644,15 @@ export const loginWithBiometric = async (req, res) => {
     // 3. Both → verify BOTH (device AND face)
     // 4. Email/password → traditional login (handled separately)
 
-    // Step 1: Find user based on what's provided
-    // IMPORTANT: If face data is provided (even with fingerprint), we MUST verify face
+    // CRITICAL SECURITY: If face data is provided (faceId OR faceLandmarks), we MUST verify face
+    // Even if fingerprint is also provided, face verification takes priority
     // This prevents friends from using your device with their face
-    if (hasFingerprint && !hasFace) {
+    if (hasFace) {
+      console.log('👤 Face data detected - MUST verify face (even if fingerprint provided)');
+      // Skip fingerprint-only path - go directly to face verification
+    } else if (hasFingerprint && !hasFace) {
       console.log('🔑 Using FINGERPRINT-ONLY login path (no face data provided)');
-      // Method 1: Fingerprint ONLY login
+      // Method 1: Fingerprint ONLY login (no face data at all)
       user = await User.findOne({
         fingerprintData: fingerprintPublicKey
       });
@@ -695,7 +698,7 @@ export const loginWithBiometric = async (req, res) => {
 
     // Step 2: Handle Face login (with or without fingerprint)
     if (hasFace) {
-      console.log('👤 Using FACE login path');
+      // Face verification path (already logged above if we got here)
       // Get faceId - either from request body (preferred) or generate from faceImage
       let faceIdValue = faceId;
       
