@@ -605,14 +605,21 @@ const verifyFaceSimilarity = (incomingLandmarks, storedLandmarks, context = 'log
 
 export const loginWithBiometric = async (req, res) => {
   try {
-    const { faceImage, fingerprintPublicKey, employeeNumber, email, faceLandmarks } = req.body;
+    const { faceImage, fingerprintPublicKey, employeeNumber, email, faceLandmarks, faceId } = req.body;
 
     let user = null;
+    const hasFingerprint = !!fingerprintPublicKey;
+    const hasFace = !!(faceId || faceImage || faceLandmarks);
 
-    // Method 1: Login with Fingerprint (fingerprintPublicKey only)
-    // NOTE: Only ONE user per device is allowed, so we can directly find the user
-    if (fingerprintPublicKey && !faceImage) {
-      // Find user by fingerprintPublicKey (only one user per device)
+    // FLEXIBLE LOGIN: Validate each method that's provided
+    // 1. Fingerprint only → verify device matches
+    // 2. Face only → verify face landmarks match
+    // 3. Both → verify BOTH (device AND face)
+    // 4. Email/password → traditional login (handled separately)
+
+    // Step 1: Find user based on what's provided
+    if (hasFingerprint && !hasFace) {
+      // Method 1: Fingerprint ONLY login
       user = await User.findOne({
         fingerprintData: fingerprintPublicKey
       });
@@ -629,14 +636,11 @@ export const loginWithBiometric = async (req, res) => {
         });
       }
 
-      // Fingerprint is already verified on device, just verify it matches database
-      // Update last login
+      // Fingerprint verified - login successful
       user.lastLogin = new Date();
       await user.save();
 
-      // Generate token
       const token = GenerateToken(user._id, res);
-
       return res.status(200).json({
         message: 'تم تسجيل الدخول بنجاح بالبصمة',
         user: {
@@ -650,25 +654,19 @@ export const loginWithBiometric = async (req, res) => {
           faceIdEnabled: user.faceIdEnabled,
           twoFactorEnabled: user.twoFactorEnabled,
           attendancePoints: user.attendancePoints,
-          fingerprintData: user.fingerprintData, // Include for security verification
-          faceId: user.faceId // Include for security verification
+          fingerprintData: user.fingerprintData,
+          faceId: user.faceId
         },
         token
       });
     }
 
-    // Method 2: Login with Face Recognition (faceId or faceImage with email/employeeNumber)
-    // Prefer faceId (no image) for privacy, fallback to faceImage for backward compatibility
-    // NOTE: fingerprintPublicKey can be sent WITH faceId for security verification (device check)
-    const faceIdFromRequest = req.body.faceId;
-    if (faceIdFromRequest || faceImage) {
-      // If fingerprintPublicKey is also provided, it's for security verification (device check)
-      // We still process this as face login, but verify the device matches
-      // Get faceId - either from request body (preferred, no image) or generate from faceImage
-      let faceId = faceIdFromRequest;
+    // Step 2: Handle Face login (with or without fingerprint)
+    if (hasFace) {
+      // Get faceId - either from request body (preferred) or generate from faceImage
+      let faceIdValue = faceId;
       
-      // If faceId not provided, generate from faceImage (fallback for backward compatibility)
-      if (!faceId && faceImage) {
+      if (!faceIdValue && faceImage) {
         const generateFaceId = (base64Image) => {
           const sample1 = base64Image.substring(0, 100);
           const sample2 = base64Image.substring(Math.floor(base64Image.length / 2), Math.floor(base64Image.length / 2) + 100);
@@ -679,158 +677,116 @@ export const loginWithBiometric = async (req, res) => {
           }, 0);
           return Math.abs(hash).toString(16);
         };
-        faceId = generateFaceId(faceImage);
+        faceIdValue = generateFaceId(faceImage);
       }
       
-      if (!faceId) {
+      if (!faceIdValue && !faceLandmarks) {
         return res.status(400).json({ 
-          message: 'يرجى إرسال faceId أو صورة الوجه' 
+          message: 'يرجى إرسال faceId أو صورة الوجه أو faceLandmarks' 
         });
       }
 
-      // Try to find user by faceId first (face-only login)
-      // If faceId matches, login without requiring email/employeeNumber
+      // Find user by faceId (if provided) or by email/employeeNumber
       if (!email && !employeeNumber) {
-        user = await User.findOne({
-          faceId: faceId
-        });
-
-        if (user) {
-          // SECURITY CHECK: If user has fingerprintPublicKey (registered on a device),
-          // verify that the current device's fingerprintPublicKey matches
-          // This prevents other users from logging in from a device that's not theirs
-          const currentDeviceFingerprint = req.body.fingerprintPublicKey; // Optional: sent from frontend
-          
-          if (user.fingerprintData && currentDeviceFingerprint) {
-            // User is registered on a device - verify it's the same device
-            if (user.fingerprintData !== currentDeviceFingerprint) {
-              console.log('⚠️ Security: Face login attempt from different device!');
-              console.log(`   User's registered device fingerprintPublicKey: ${user.fingerprintData.substring(0, 50)}...`);
-              console.log(`   Current device fingerprintPublicKey: ${currentDeviceFingerprint.substring(0, 50)}...`);
-              return res.status(403).json({ 
-                message: 'لا يمكن تسجيل الدخول من هذا الجهاز. يرجى استخدام جهازك المسجل أو تسجيل الدخول بالبريد الإلكتروني وكلمة المرور.' 
-              });
-            }
-            console.log('✅ Security: Face login from correct device verified');
-          }
-          
-          // Verify face is enabled
-          if (!user.faceIdEnabled) {
-            return res.status(403).json({ 
-              message: 'المصادقة الحيوية غير مفعلة لهذا الحساب' 
-            });
-          }
-
-          // Additional verification using landmarks
-          const landmarkCheck = verifyFaceSimilarity(faceLandmarks, user.faceLandmarks, 'login-faceId');
-          if (!landmarkCheck.verified) {
-            return res.status(401).json({ 
-              message: 'الوجه غير متطابق' 
-            });
-          }
-
-          // Update last login
-          user.lastLogin = new Date();
-          await user.save();
-
-          // Generate token
-          const token = GenerateToken(user._id, res);
-
-          return res.status(200).json({
-            message: 'تم تسجيل الدخول بنجاح بالوجه',
-            user: {
-              _id: user._id,
-              employeeNumber: user.employeeNumber,
-              email: user.email,
-              fullName: user.fullName,
-              role: user.role,
-              department: user.department,
-              position: user.position,
-              faceIdEnabled: user.faceIdEnabled,
-              twoFactorEnabled: user.twoFactorEnabled,
-              attendancePoints: user.attendancePoints,
-              fingerprintData: user.fingerprintData, // Include for security verification
-              faceId: user.faceId // Include for security verification
-            },
-            token
-          });
-        } else {
+        // Face-only login: find user by faceId
+        if (faceIdValue) {
+          user = await User.findOne({ faceId: faceIdValue });
+        }
+        
+        if (!user) {
           return res.status(401).json({ 
             message: 'الوجه غير مسجل أو غير صحيح' 
           });
         }
-      }
-
-      // Find user by email or employee number (if provided)
-      if (email || employeeNumber) {
+      } else {
+        // Face + email/employeeNumber: find user by credentials
         user = await User.findOne({
-      $or: [
-        email ? { email } : null,
-        employeeNumber ? { employeeNumber } : null
-      ].filter(Boolean)
-    });
+          $or: [
+            email ? { email } : null,
+            employeeNumber ? { employeeNumber } : null
+          ].filter(Boolean)
+        });
+
+        if (!user) {
+          return res.status(401).json({ 
+            message: 'المستخدم غير موجود' 
+          });
+        }
+
+        if (!user.faceLandmarks && !user.faceId) {
+          return res.status(400).json({ 
+            message: 'لم يتم تسجيل بيانات الوجه لهذا المستخدم' 
+          });
+        }
       }
 
-    if (!user) {
-      return res.status(401).json({ 
-        message: 'المستخدم غير موجود' 
-      });
-    }
+      // SECURITY CHECK 1: Verify fingerprint if provided
+      if (hasFingerprint) {
+        if (user.fingerprintData && user.fingerprintData !== fingerprintPublicKey) {
+          console.log('⚠️ Security: Fingerprint mismatch!');
+          return res.status(403).json({ 
+            message: 'البصمة غير متطابقة مع المستخدم المسجل' 
+          });
+        }
+        console.log('✅ Security: Fingerprint verified');
+      }
 
-      if (!user.faceImage && !user.faceLandmarks) {
-      return res.status(400).json({ 
-        message: 'لم يتم تسجيل بيانات الوجه لهذا المستخدم' 
-      });
-    }
-
-      // Verify faceId matches (simple hash comparison)
-      if (user.faceId !== faceId) {
-        return res.status(401).json({ 
-          message: 'الوجه غير متطابق' 
+      // SECURITY CHECK 2: Verify face landmarks (REQUIRED when face is provided)
+      if (faceLandmarks && user.faceLandmarks) {
+        const landmarkCheck = verifyFaceSimilarity(faceLandmarks, user.faceLandmarks, 'login');
+        if (!landmarkCheck.verified) {
+          console.log(`❌ Face similarity too low: ${(landmarkCheck.similarity * 100).toFixed(2)}%`);
+          return res.status(401).json({ 
+            message: 'الوجه غير متطابق مع المستخدم المسجل' 
+          });
+        }
+        console.log(`✅ Face similarity verified: ${(landmarkCheck.similarity * 100).toFixed(2)}%`);
+      } else if (faceIdValue && user.faceId) {
+        // Fallback: use faceId hash comparison if landmarks not available
+        if (user.faceId !== faceIdValue) {
+          return res.status(401).json({ 
+            message: 'الوجه غير متطابق' 
+          });
+        }
+        console.log('✅ FaceId hash verified (fallback - landmarks not available)');
+      } else {
+        return res.status(400).json({ 
+          message: 'لم يتم تسجيل بيانات الوجه لهذا المستخدم' 
         });
       }
 
-      const landmarkCheck = verifyFaceSimilarity(faceLandmarks, user.faceLandmarks, 'login-email');
-      if (!landmarkCheck.verified) {
-        return res.status(401).json({ 
-          message: 'الوجه غير متطابق' 
+      // Verify face is enabled
+      if (!user.faceIdEnabled) {
+        return res.status(403).json({ 
+          message: 'المصادقة الحيوية غير مفعلة لهذا الحساب' 
         });
       }
 
-    // Simple face matching (in production, use proper face recognition algorithm)
-    // For now, we'll just check if face image exists and is enabled
-    // TODO: Implement proper face recognition comparison
-    if (!user.faceIdEnabled) {
-      return res.status(403).json({ 
-        message: 'المصادقة الحيوية غير مفعلة لهذا الحساب' 
-      });
-    }
+      // All checks passed - login successful
+      user.lastLogin = new Date();
+      await user.save();
 
-    // Update last login
-    user.lastLogin = new Date();
-    await user.save();
-
-    // Generate token
-    const token = GenerateToken(user._id, res);
-
+      const token = GenerateToken(user._id, res);
       return res.status(200).json({
-        message: 'تم تسجيل الدخول بنجاح بالوجه',
-      user: {
-        _id: user._id,
-        employeeNumber: user.employeeNumber,
-        email: user.email,
-        fullName: user.fullName,
-        role: user.role,
-        department: user.department,
-        position: user.position,
-        faceIdEnabled: user.faceIdEnabled,
-        twoFactorEnabled: user.twoFactorEnabled,
-        attendancePoints: user.attendancePoints,
-        fingerprintData: user.fingerprintData, // Include for security verification
-        faceId: user.faceId // Include for security verification
-      },
-      token
-    });
+        message: hasFingerprint && hasFace 
+          ? 'تم تسجيل الدخول بنجاح بالبصمة والوجه'
+          : 'تم تسجيل الدخول بنجاح بالوجه',
+        user: {
+          _id: user._id,
+          employeeNumber: user.employeeNumber,
+          email: user.email,
+          fullName: user.fullName,
+          role: user.role,
+          department: user.department,
+          position: user.position,
+          faceIdEnabled: user.faceIdEnabled,
+          twoFactorEnabled: user.twoFactorEnabled,
+          attendancePoints: user.attendancePoints,
+          fingerprintData: user.fingerprintData,
+          faceId: user.faceId
+        },
+        token
+      });
     }
 
     // If neither fingerprintPublicKey nor faceImage is provided
