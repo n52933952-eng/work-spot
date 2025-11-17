@@ -12,26 +12,55 @@ import {
   calculateAttendancePoints
 } from '../utils/attendanceCalculation.js';
 import { sendLateNotification } from '../utils/notifications.js';
+import { compareFaces } from '../utils/faceLandmarkSimilarity.js';
+
+const verifyFaceForAttendance = async (userId, faceId, faceLandmarks) => {
+  const user = await User.findById(userId).select('faceId faceLandmarks');
+  if (!user || (!user.faceId && !user.faceLandmarks)) {
+    return {
+      verified: false,
+      message: 'لم يتم تسجيل بيانات الوجه لهذا المستخدم',
+    };
+  }
+
+  let verified = false;
+
+  if (faceLandmarks && user.faceLandmarks) {
+    const similarity = compareFaces(faceLandmarks, user.faceLandmarks);
+    if (similarity >= 0.75) {
+      verified = true;
+    } else {
+      console.log('❌ Face similarity too low for attendance:', similarity);
+    }
+  }
+
+  if (!verified && faceId && user.faceId) {
+    if (user.faceId === faceId) {
+      verified = true;
+    }
+  }
+
+  return {
+    verified,
+    message: verified ? null : 'الوجه غير متطابق مع المستخدم المسجل',
+  };
+};
 
 // Check-in
 export const checkIn = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { latitude, longitude, address, faceIdVerified, faceId, qrCodeId } = req.body;
+    const { latitude, longitude, address, faceId, faceLandmarks, qrCodeId } = req.body;
     
-    // Verify faceId if provided (face check-in)
-    if (faceId) {
-      const user = await User.findById(userId);
-      if (!user || !user.faceId) {
-        return res.status(400).json({ 
-          message: 'لم يتم تسجيل بيانات الوجه لهذا المستخدم' 
-        });
-      }
-      if (user.faceId !== faceId) {
+    let verifiedFace = false;
+    if (faceId || faceLandmarks) {
+      const verification = await verifyFaceForAttendance(userId, faceId, faceLandmarks);
+      if (!verification.verified) {
         return res.status(401).json({ 
-          message: 'الوجه غير متطابق مع المستخدم المسجل' 
+          message: verification.message || 'الوجه غير متطابق مع المستخدم المسجل' 
         });
       }
+      verifiedFace = true;
     }
 
     if (!latitude || !longitude) {
@@ -165,7 +194,7 @@ export const checkIn = async (req, res) => {
       existingAttendance.checkInLocation = { latitude, longitude, address };
       existingAttendance.status = status;
       existingAttendance.lateMinutes = lateMinutes;
-      existingAttendance.faceIdVerified = faceIdVerified || false;
+      existingAttendance.faceIdVerified = verifiedFace;
       existingAttendance.qrCodeUsed = !!qrCodeId;
       existingAttendance.qrCodeId = qrCodeId || null;
       await existingAttendance.save();
@@ -177,7 +206,7 @@ export const checkIn = async (req, res) => {
         checkInLocation: { latitude, longitude, address },
         status,
         lateMinutes,
-        faceIdVerified: faceIdVerified || false,
+        faceIdVerified: verifiedFace,
         qrCodeUsed: !!qrCodeId,
         qrCodeId: qrCodeId || null
       });
@@ -218,21 +247,17 @@ export const checkIn = async (req, res) => {
 export const checkOut = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { latitude, longitude, address, faceIdVerified, faceId, qrCodeId } = req.body;
+    const { latitude, longitude, address, faceId, faceLandmarks, qrCodeId } = req.body;
     
-    // Verify faceId if provided (face check-out)
-    if (faceId) {
-      const user = await User.findById(userId);
-      if (!user || !user.faceId) {
-        return res.status(400).json({ 
-          message: 'لم يتم تسجيل بيانات الوجه لهذا المستخدم' 
-        });
-      }
-      if (user.faceId !== faceId) {
+    let verifiedFace = false;
+    if (faceId || faceLandmarks) {
+      const verification = await verifyFaceForAttendance(userId, faceId, faceLandmarks);
+      if (!verification.verified) {
         return res.status(401).json({ 
-          message: 'الوجه غير متطابق مع المستخدم المسجل' 
+          message: verification.message || 'الوجه غير متطابق مع المستخدم المسجل' 
         });
       }
+      verifiedFace = true;
     }
 
     if (!latitude || !longitude) {
@@ -298,7 +323,7 @@ export const checkOut = async (req, res) => {
     attendance.checkOutLocation = { latitude, longitude, address };
     attendance.workingHours = workingMinutes;
     attendance.overtime = overtime;
-    attendance.faceIdVerified = faceIdVerified || attendance.faceIdVerified;
+    attendance.faceIdVerified = verifiedFace || attendance.faceIdVerified;
     await attendance.save();
 
     res.status(200).json({
