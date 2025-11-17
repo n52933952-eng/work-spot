@@ -107,15 +107,71 @@ export const completeRegistration = async (req, res) => {
       console.error('Error extracting landmarks:', error);
     }
     
-    // SECURITY: Check for duplicate face using LANDMARK-BASED similarity (correct method)
+    // SECURITY CHECK 1: Check for duplicate fingerprint FIRST (device-specific check)
+    // This is faster and catches device-level duplicates immediately
+    const existingFingerprintUser = await User.findOne({ fingerprintData: fingerprintPublicKey });
+    
+    if (existingFingerprintUser) {
+      console.log('⚠️ Duplicate fingerprintPublicKey detected!');
+      console.log(`   Existing user: ${existingFingerprintUser.email || existingFingerprintUser.fullName}`);
+      
+      // IMPORTANT: Check BOTH fingerprint AND face to determine if same person or different person
+      // Step 1: Check face similarity (if landmarks available)
+      if (normalizedLandmarks && existingFingerprintUser.faceLandmarks) {
+        const similarity = compareFaces(normalizedLandmarks, existingFingerprintUser.faceLandmarks);
+        console.log(`   Face similarity check: ${(similarity * 100).toFixed(1)}%`);
+        
+        if (similarity >= 0.75) {
+          // Same person trying to register again on same device
+          console.log(`   ✅ Same person detected (face similarity: ${(similarity * 100).toFixed(1)}%)`);
+          return res.status(400).json({ 
+            message: 'أنت مسجل بالفعل على هذا الجهاز. يرجى تسجيل الدخول بدلاً من التسجيل مرة أخرى.' 
+          });
+        } else {
+          // Different person (face similarity < 75%) on same device - BLOCKED
+          console.log(`   ❌ Different person detected (face similarity: ${(similarity * 100).toFixed(1)}% < 75%)`);
+          return res.status(400).json({ 
+            message: 'هذا الجهاز مستخدم بالفعل. يرجى استخدام جهاز آخر أو تسجيل الدخول بالحساب المسجل على هذا الجهاز.' 
+          });
+        }
+      }
+      
+      // Step 2: Fallback - if no landmarks, check faceId (hash-based, less reliable)
+      if (newFaceId && existingFingerprintUser.faceId) {
+        if (newFaceId === existingFingerprintUser.faceId) {
+          // Same person (exact faceId match)
+          console.log('   ✅ Same person detected (exact faceId match)');
+          return res.status(400).json({ 
+            message: 'أنت مسجل بالفعل على هذا الجهاز. يرجى تسجيل الدخول بدلاً من التسجيل مرة أخرى.' 
+          });
+        } else {
+          // Different person (different faceId) on same device - BLOCKED
+          console.log('   ❌ Different person detected (different faceId)');
+          return res.status(400).json({ 
+            message: 'هذا الجهاز مستخدم بالفعل. يرجى استخدام جهاز آخر أو تسجيل الدخول بالحساب المسجل على هذا الجهاز.' 
+          });
+        }
+      }
+      
+      // Step 3: If no face data available, assume different person (safety: block registration)
+      // This should rarely happen if face capture is working properly
+      console.log('   ⚠️ No face data available for comparison - blocking registration (safety)');
+      return res.status(400).json({ 
+        message: 'هذا الجهاز مستخدم بالفعل. يرجى استخدام جهاز آخر أو تسجيل الدخول بالحساب المسجل على هذا الجهاز.' 
+      });
+    }
+    
+    console.log('✅ Fingerprint check: Device is available for registration');
+    
+    // SECURITY CHECK 2: Check for duplicate face using LANDMARK-BASED similarity (correct method)
     // Get all users with faceLandmarks to compare
     const allUsersWithLandmarks = await User.find({ 
       faceLandmarks: { $exists: true, $ne: null } 
-    }).select('faceLandmarks _id email fullName');
+    }).select('faceLandmarks _id email fullName fingerprintData');
     
     // If we have landmarks, use landmark-based comparison (RELIABLE)
     if (normalizedLandmarks && allUsersWithLandmarks.length > 0) {
-      console.log(`🔍 Checking ${allUsersWithLandmarks.length} users with landmarks for duplicates...`);
+      console.log(`🔍 Checking ${allUsersWithLandmarks.length} users with landmarks for duplicate faces...`);
       
       for (const user of allUsersWithLandmarks) {
         if (user.faceLandmarks) {
@@ -129,9 +185,20 @@ export const completeRegistration = async (req, res) => {
             console.log(`⚠️ Duplicate face detected using landmarks!`);
             console.log(`   Similarity: ${(similarity * 100).toFixed(1)}%`);
             console.log(`   Existing user: ${user.email || user.fullName}`);
-            return res.status(400).json({ 
-              message: 'هذا الوجه مسجل مسبقاً. يرجى استخدام حسابك الحالي أو تسجيل الدخول بالوجه.' 
-            });
+            console.log(`   Existing user fingerprintPublicKey: ${user.fingerprintData ? 'exists' : 'null'}`);
+            
+            // Check if this is the same device (same fingerprintPublicKey)
+            if (user.fingerprintData === fingerprintPublicKey) {
+              // Same person, same device - already registered
+              return res.status(400).json({ 
+                message: 'أنت مسجل بالفعل على هذا الجهاز. يرجى تسجيل الدخول بدلاً من التسجيل مرة أخرى.' 
+              });
+            } else {
+              // Same person, different device - face already registered
+              return res.status(400).json({ 
+                message: 'هذا الوجه مسجل مسبقاً. يرجى استخدام حسابك الحالي أو تسجيل الدخول بالوجه.' 
+              });
+            }
           }
         }
       }
@@ -141,35 +208,17 @@ export const completeRegistration = async (req, res) => {
     // Fallback: Check exact faceId match (for backward compatibility)
     const existingFaceUserExact = await User.findOne({ faceId: newFaceId });
     if (existingFaceUserExact) {
-      return res.status(400).json({ 
-        message: 'هذا الوجه مسجل مسبقاً. يرجى استخدام حسابك الحالي أو تسجيل الدخول بالوجه.' 
-      });
-    }
-    
-    // SECURITY: Only ONE user can register per device
-    // fingerprintPublicKey is device-specific, so if it already exists, someone already registered on this device
-    // This prevents anyone else (friend, etc.) from registering on your phone
-    const existingFingerprintUser = await User.findOne({ fingerprintData: fingerprintPublicKey });
-    
-    if (existingFingerprintUser) {
-      // Check if it's the same person trying to register again (same face)
-      if (normalizedLandmarks && existingFingerprintUser.faceLandmarks) {
-        const similarity = compareFaces(normalizedLandmarks, existingFingerprintUser.faceLandmarks);
-        if (similarity >= 0.75) {
-          // Same person trying to register again on same device
-          return res.status(400).json({ 
-            message: 'أنت مسجل بالفعل على هذا الجهاز. يرجى تسجيل الدخول بدلاً من التسجيل مرة أخرى.' 
-          });
-        }
+      // Check if same device
+      if (existingFaceUserExact.fingerprintData === fingerprintPublicKey) {
+        return res.status(400).json({ 
+          message: 'أنت مسجل بالفعل على هذا الجهاز. يرجى تسجيل الدخول بدلاً من التسجيل مرة أخرى.' 
+        });
+      } else {
+        return res.status(400).json({ 
+          message: 'هذا الوجه مسجل مسبقاً. يرجى استخدام حسابك الحالي أو تسجيل الدخول بالوجه.' 
+        });
       }
-      
-      // Different person trying to register on same device - BLOCKED
-      return res.status(400).json({ 
-        message: 'هذا الجهاز مستخدم بالفعل. يرجى استخدام جهاز آخر أو تسجيل الدخول بالحساب المسجل على هذا الجهاز.' 
-      });
     }
-    
-    console.log('✅ Fingerprint check: Device is available for registration');
 
     // Create user with biometric data
     const userData = {
