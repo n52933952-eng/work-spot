@@ -607,9 +607,21 @@ export const loginWithBiometric = async (req, res) => {
   try {
     const { faceImage, fingerprintPublicKey, employeeNumber, email, faceLandmarks, faceId } = req.body;
 
+    console.log('🔍 Login request received:');
+    console.log('  - fingerprintPublicKey:', !!fingerprintPublicKey);
+    console.log('  - faceId:', !!faceId);
+    console.log('  - faceImage:', !!faceImage);
+    console.log('  - faceLandmarks:', !!faceLandmarks);
+    console.log('  - email:', email);
+    console.log('  - employeeNumber:', employeeNumber);
+
     let user = null;
     const hasFingerprint = !!fingerprintPublicKey;
     const hasFace = !!(faceId || faceImage || faceLandmarks);
+    
+    console.log('📊 Login method detection:');
+    console.log('  - hasFingerprint:', hasFingerprint);
+    console.log('  - hasFace:', hasFace);
 
     // FLEXIBLE LOGIN: Validate each method that's provided
     // 1. Fingerprint only → verify device matches
@@ -619,12 +631,14 @@ export const loginWithBiometric = async (req, res) => {
 
     // Step 1: Find user based on what's provided
     if (hasFingerprint && !hasFace) {
+      console.log('🔑 Using FINGERPRINT-ONLY login path');
       // Method 1: Fingerprint ONLY login
       user = await User.findOne({
         fingerprintData: fingerprintPublicKey
       });
 
       if (!user) {
+        console.log('❌ No user found with this fingerprintPublicKey');
         return res.status(401).json({ 
           message: 'البصمة غير مسجلة أو غير صحيحة' 
         });
@@ -636,6 +650,7 @@ export const loginWithBiometric = async (req, res) => {
         });
       }
 
+      console.log(`✅ Fingerprint verified for user: ${user.email || user.employeeNumber}`);
       // Fingerprint verified - login successful
       user.lastLogin = new Date();
       await user.save();
@@ -663,6 +678,7 @@ export const loginWithBiometric = async (req, res) => {
 
     // Step 2: Handle Face login (with or without fingerprint)
     if (hasFace) {
+      console.log('👤 Using FACE login path');
       // Get faceId - either from request body (preferred) or generate from faceImage
       let faceIdValue = faceId;
       
@@ -691,10 +707,13 @@ export const loginWithBiometric = async (req, res) => {
       
       // Priority 1: Find user by faceLandmarks (if provided)
       if (faceLandmarks) {
+        console.log('🔍 Searching for user by face landmarks...');
         // Get all users with faceLandmarks and compare
         const allUsers = await User.find({ 
           faceLandmarks: { $exists: true, $ne: null } 
         }).select('faceLandmarks _id email employeeNumber fullName faceIdEnabled fingerprintData');
+        
+        console.log(`📋 Found ${allUsers.length} users with faceLandmarks to compare`);
         
         let bestMatch = null;
         let bestSimilarity = 0;
@@ -702,6 +721,7 @@ export const loginWithBiometric = async (req, res) => {
         for (const candidateUser of allUsers) {
           if (candidateUser.faceLandmarks) {
             const similarity = compareFaces(faceLandmarks, candidateUser.faceLandmarks);
+            console.log(`  - User ${candidateUser.email || candidateUser.employeeNumber}: ${(similarity * 100).toFixed(2)}% similarity`);
             if (similarity >= 0.75 && similarity > bestSimilarity) {
               bestMatch = candidateUser;
               bestSimilarity = similarity;
@@ -756,11 +776,13 @@ export const loginWithBiometric = async (req, res) => {
             token
           });
         } else {
-          console.log('❌ No user found with matching face landmarks');
+          console.log('❌ No user found with matching face landmarks (similarity < 75%)');
           return res.status(401).json({ 
             message: 'الوجه غير مسجل أو غير صحيح' 
           });
         }
+      } else {
+        console.log('⚠️ faceLandmarks not provided in request - cannot verify face');
       }
 
       // Face-only login (no fingerprint): find user by faceId or email/employeeNumber
