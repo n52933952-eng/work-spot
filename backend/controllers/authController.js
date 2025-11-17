@@ -585,9 +585,27 @@ export const uploadBiometric = async (req, res) => {
 };
 
 // Login with biometric (fingerprint OR face recognition)
+const verifyFaceSimilarity = (incomingLandmarks, storedLandmarks, context = 'login') => {
+  if (!incomingLandmarks || !storedLandmarks) {
+    return { verified: true };
+  }
+
+  try {
+    const similarity = compareFaces(incomingLandmarks, storedLandmarks);
+    console.log(`🔍 Face similarity (${context}): ${(similarity * 100).toFixed(2)}%`);
+    if (similarity >= 0.75) {
+      return { verified: true, similarity };
+    }
+    return { verified: false, similarity };
+  } catch (error) {
+    console.error('Error verifying face similarity:', error);
+    return { verified: false };
+  }
+};
+
 export const loginWithBiometric = async (req, res) => {
   try {
-    const { faceImage, fingerprintPublicKey, employeeNumber, email } = req.body;
+    const { faceImage, fingerprintPublicKey, employeeNumber, email, faceLandmarks } = req.body;
 
     let user = null;
 
@@ -703,6 +721,14 @@ export const loginWithBiometric = async (req, res) => {
             });
           }
 
+          // Additional verification using landmarks
+          const landmarkCheck = verifyFaceSimilarity(faceLandmarks, user.faceLandmarks, 'login-faceId');
+          if (!landmarkCheck.verified) {
+            return res.status(401).json({ 
+              message: 'الوجه غير متطابق' 
+            });
+          }
+
           // Update last login
           user.lastLogin = new Date();
           await user.save();
@@ -751,7 +777,7 @@ export const loginWithBiometric = async (req, res) => {
       });
     }
 
-    if (!user.faceImage) {
+      if (!user.faceImage && !user.faceLandmarks) {
       return res.status(400).json({ 
         message: 'لم يتم تسجيل بيانات الوجه لهذا المستخدم' 
       });
@@ -759,6 +785,13 @@ export const loginWithBiometric = async (req, res) => {
 
       // Verify faceId matches (simple hash comparison)
       if (user.faceId !== faceId) {
+        return res.status(401).json({ 
+          message: 'الوجه غير متطابق' 
+        });
+      }
+
+      const landmarkCheck = verifyFaceSimilarity(faceLandmarks, user.faceLandmarks, 'login-email');
+      if (!landmarkCheck.verified) {
         return res.status(401).json({ 
           message: 'الوجه غير متطابق' 
         });
