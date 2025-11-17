@@ -457,7 +457,9 @@ export const loginWithBiometric = async (req, res) => {
           position: user.position,
           faceIdEnabled: user.faceIdEnabled,
           twoFactorEnabled: user.twoFactorEnabled,
-          attendancePoints: user.attendancePoints
+          attendancePoints: user.attendancePoints,
+          fingerprintData: user.fingerprintData, // Include for security verification
+          faceId: user.faceId // Include for security verification
         },
         token
       });
@@ -525,7 +527,9 @@ export const loginWithBiometric = async (req, res) => {
               position: user.position,
               faceIdEnabled: user.faceIdEnabled,
               twoFactorEnabled: user.twoFactorEnabled,
-              attendancePoints: user.attendancePoints
+              attendancePoints: user.attendancePoints,
+              fingerprintData: user.fingerprintData, // Include for security verification
+              faceId: user.faceId // Include for security verification
             },
             token
           });
@@ -593,7 +597,9 @@ export const loginWithBiometric = async (req, res) => {
         position: user.position,
         faceIdEnabled: user.faceIdEnabled,
         twoFactorEnabled: user.twoFactorEnabled,
-        attendancePoints: user.attendancePoints
+        attendancePoints: user.attendancePoints,
+        fingerprintData: user.fingerprintData, // Include for security verification
+        faceId: user.faceId // Include for security verification
       },
       token
     });
