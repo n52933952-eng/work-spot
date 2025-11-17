@@ -42,8 +42,37 @@ const verifyFaceForAttendance = async (userId, faceId, faceLandmarks) => {
     };
   }
 
+  // Extract actual face data from payload structure
+  // Frontend sends: { faceData: [detectedFace], faceFeatures: {...} }
+  let incomingFaceData = null;
+  if (faceLandmarks.faceData && Array.isArray(faceLandmarks.faceData) && faceLandmarks.faceData.length > 0) {
+    incomingFaceData = faceLandmarks.faceData[0]; // Use first face from ML Kit detection
+    console.log('✅ Extracted face data from faceLandmarks.faceData[0]');
+  } else if (faceLandmarks.faceFeatures?.landmarks) {
+    // Fallback: use faceFeatures structure
+    incomingFaceData = {
+      landmarks: faceLandmarks.faceFeatures.landmarks,
+      frame: faceLandmarks.faceFeatures.frame,
+      headEulerAngleX: faceLandmarks.faceFeatures.headEulerAngleX,
+      headEulerAngleY: faceLandmarks.faceFeatures.headEulerAngleY,
+      headEulerAngleZ: faceLandmarks.faceFeatures.headEulerAngleZ,
+    };
+    console.log('✅ Extracted face data from faceLandmarks.faceFeatures');
+  } else if (faceLandmarks.landmarks) {
+    incomingFaceData = faceLandmarks;
+    console.log('✅ Using faceLandmarks directly');
+  }
+  
+  if (!incomingFaceData) {
+    console.log('❌ Could not extract face data from faceLandmarks payload');
+    return {
+      verified: false,
+      message: 'بيانات الوجه غير صحيحة',
+    };
+  }
+
   // Compare landmarks (REQUIRED - no fallback)
-  const similarity = compareFaces(faceLandmarks, user.faceLandmarks);
+  const similarity = compareFaces(incomingFaceData, user.faceLandmarks);
   console.log(`🔍 Attendance face similarity: ${(similarity * 100).toFixed(2)}%`);
   
   if (similarity >= 0.75) {

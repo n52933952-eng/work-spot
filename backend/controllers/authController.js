@@ -608,20 +608,30 @@ export const loginWithBiometric = async (req, res) => {
     const { faceImage, fingerprintPublicKey, employeeNumber, email, faceLandmarks, faceId } = req.body;
 
     console.log('🔍 Login request received:');
-    console.log('  - fingerprintPublicKey:', !!fingerprintPublicKey);
-    console.log('  - faceId:', !!faceId);
+    console.log('  - fingerprintPublicKey:', !!fingerprintPublicKey, fingerprintPublicKey ? fingerprintPublicKey.substring(0, 20) + '...' : 'null');
+    console.log('  - faceId:', !!faceId, faceId || 'null');
     console.log('  - faceImage:', !!faceImage);
-    console.log('  - faceLandmarks:', !!faceLandmarks);
+    console.log('  - faceLandmarks:', !!faceLandmarks, faceLandmarks ? (typeof faceLandmarks === 'object' ? 'object' : 'other') : 'null');
     console.log('  - email:', email);
     console.log('  - employeeNumber:', employeeNumber);
 
     let user = null;
     const hasFingerprint = !!fingerprintPublicKey;
-    const hasFace = !!(faceId || faceImage || faceLandmarks);
+    // Check if faceLandmarks is a valid object with face data
+    // Frontend sends: { faceData: [...], faceFeatures: {...}, faceId: "..." }
+    const hasValidFaceLandmarks = faceLandmarks && typeof faceLandmarks === 'object' && (
+      faceLandmarks.faceData || 
+      faceLandmarks.faceFeatures?.landmarks || 
+      faceLandmarks.landmarks ||
+      (Array.isArray(faceLandmarks) && faceLandmarks.length > 0)
+    );
+    const hasFace = !!(faceId || faceImage || hasValidFaceLandmarks);
     
     console.log('📊 Login method detection:');
     console.log('  - hasFingerprint:', hasFingerprint);
+    console.log('  - hasValidFaceLandmarks:', hasValidFaceLandmarks);
     console.log('  - hasFace:', hasFace);
+    console.log('  - Will use:', hasFingerprint && !hasFace ? 'FINGERPRINT-ONLY' : hasFace ? 'FACE' : 'UNKNOWN');
 
     // FLEXIBLE LOGIN: Validate each method that's provided
     // 1. Fingerprint only → verify device matches
@@ -705,9 +715,38 @@ export const loginWithBiometric = async (req, res) => {
       // FACE-ONLY LOGIN: Find user by face landmarks (most secure)
       // Fingerprint is optional - only used as additional security layer if provided
       
-      // Priority 1: Find user by faceLandmarks (if provided)
-      if (faceLandmarks) {
+      // Priority 1: Find user by faceLandmarks (if provided and valid)
+      if (hasValidFaceLandmarks) {
         console.log('🔍 Searching for user by face landmarks...');
+        
+        // Extract actual face data from payload structure
+        // Frontend sends: { faceData: [detectedFace], faceFeatures: {...} }
+        let incomingFaceData = null;
+        if (faceLandmarks.faceData && Array.isArray(faceLandmarks.faceData) && faceLandmarks.faceData.length > 0) {
+          incomingFaceData = faceLandmarks.faceData[0]; // Use first face from ML Kit detection
+          console.log('✅ Extracted face data from faceLandmarks.faceData[0]');
+        } else if (faceLandmarks.faceFeatures?.landmarks) {
+          // Fallback: use faceFeatures structure
+          incomingFaceData = {
+            landmarks: faceLandmarks.faceFeatures.landmarks,
+            frame: faceLandmarks.faceFeatures.frame,
+            headEulerAngleX: faceLandmarks.faceFeatures.headEulerAngleX,
+            headEulerAngleY: faceLandmarks.faceFeatures.headEulerAngleY,
+            headEulerAngleZ: faceLandmarks.faceFeatures.headEulerAngleZ,
+          };
+          console.log('✅ Extracted face data from faceLandmarks.faceFeatures');
+        } else if (faceLandmarks.landmarks) {
+          incomingFaceData = faceLandmarks;
+          console.log('✅ Using faceLandmarks directly');
+        }
+        
+        if (!incomingFaceData) {
+          console.log('❌ Could not extract face data from faceLandmarks payload');
+          return res.status(400).json({ 
+            message: 'بيانات الوجه غير صحيحة' 
+          });
+        }
+        
         // Get all users with faceLandmarks and compare
         const allUsers = await User.find({ 
           faceLandmarks: { $exists: true, $ne: null } 
@@ -720,7 +759,7 @@ export const loginWithBiometric = async (req, res) => {
         
         for (const candidateUser of allUsers) {
           if (candidateUser.faceLandmarks) {
-            const similarity = compareFaces(faceLandmarks, candidateUser.faceLandmarks);
+            const similarity = compareFaces(incomingFaceData, candidateUser.faceLandmarks);
             console.log(`  - User ${candidateUser.email || candidateUser.employeeNumber}: ${(similarity * 100).toFixed(2)}% similarity`);
             if (similarity >= 0.75 && similarity > bestSimilarity) {
               bestMatch = candidateUser;
