@@ -16,56 +16,49 @@ import { compareFaces } from '../utils/faceLandmarkSimilarity.js';
 
 const verifyFaceForAttendance = async (userId, faceId, faceLandmarks) => {
   const user = await User.findById(userId).select('faceId faceLandmarks');
-  if (!user || (!user.faceId && !user.faceLandmarks)) {
+  if (!user) {
     return {
       verified: false,
-      message: 'لم يتم تسجيل بيانات الوجه لهذا المستخدم',
+      message: 'المستخدم غير موجود',
     };
   }
 
-  // PRIORITY 1: Use landmark-based comparison (RELIABLE - required for new registrations)
-  if (faceLandmarks && user.faceLandmarks) {
-    const similarity = compareFaces(faceLandmarks, user.faceLandmarks);
-    console.log(`🔍 Attendance face similarity: ${(similarity * 100).toFixed(2)}%`);
-    if (similarity >= 0.75) {
-      console.log('✅ Face verified for attendance (landmark-based)');
-      return {
-        verified: true,
-        message: null,
-      };
-    } else {
-      console.log(`❌ Face similarity too low for attendance: ${(similarity * 100).toFixed(2)}% < 75%`);
-      return {
-        verified: false,
-        message: 'الوجه غير متطابق مع المستخدم المسجل',
-      };
-    }
+  // REQUIRE faceLandmarks for verification (most secure method)
+  // If user doesn't have faceLandmarks stored, they need to re-register biometrics
+  if (!user.faceLandmarks) {
+    console.log('❌ User does not have faceLandmarks stored - need to re-register biometrics');
+    return {
+      verified: false,
+      message: 'يرجى إعادة تسجيل بيانات الوجه (إعداد المصادقة الحيوية)',
+    };
   }
 
-  // PRIORITY 2: Fallback to faceId hash (only if landmarks not available - legacy users)
-  // This is less secure but needed for backward compatibility
-  if (faceId && user.faceId) {
-    if (user.faceId === faceId) {
-      console.log('⚠️ Face verified using hash (fallback - landmarks not available)');
-      return {
-        verified: true,
-        message: null,
-      };
-    } else {
-      console.log('❌ FaceId hash mismatch');
-      return {
-        verified: false,
-        message: 'الوجه غير متطابق مع المستخدم المسجل',
-      };
-    }
+  // REQUIRE faceLandmarks from request (no fallback to weak hash)
+  if (!faceLandmarks) {
+    console.log('❌ No faceLandmarks provided in request');
+    return {
+      verified: false,
+      message: 'يرجى إرسال بيانات الوجه للتحقق (faceLandmarks)',
+    };
   }
 
-  // If we have no way to verify (no landmarks, no faceId), reject
-  console.log('❌ No face data provided for verification');
-  return {
-    verified: false,
-    message: 'يرجى إرسال بيانات الوجه للتحقق',
-  };
+  // Compare landmarks (REQUIRED - no fallback)
+  const similarity = compareFaces(faceLandmarks, user.faceLandmarks);
+  console.log(`🔍 Attendance face similarity: ${(similarity * 100).toFixed(2)}%`);
+  
+  if (similarity >= 0.75) {
+    console.log(`✅ Face verified for attendance: ${(similarity * 100).toFixed(2)}% similarity`);
+    return {
+      verified: true,
+      message: null,
+    };
+  } else {
+    console.log(`❌ Face similarity too low: ${(similarity * 100).toFixed(2)}% < 75%`);
+    return {
+      verified: false,
+      message: 'الوجه غير متطابق مع المستخدم المسجل',
+    };
+  }
 };
 
 // Check-in

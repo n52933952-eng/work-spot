@@ -686,7 +686,84 @@ export const loginWithBiometric = async (req, res) => {
         });
       }
 
-      // Find user by faceId (if provided) or by email/employeeNumber
+      // FACE-ONLY LOGIN: Find user by face landmarks (most secure)
+      // Fingerprint is optional - only used as additional security layer if provided
+      
+      // Priority 1: Find user by faceLandmarks (if provided)
+      if (faceLandmarks) {
+        // Get all users with faceLandmarks and compare
+        const allUsers = await User.find({ 
+          faceLandmarks: { $exists: true, $ne: null } 
+        }).select('faceLandmarks _id email employeeNumber fullName faceIdEnabled fingerprintData');
+        
+        let bestMatch = null;
+        let bestSimilarity = 0;
+        
+        for (const candidateUser of allUsers) {
+          if (candidateUser.faceLandmarks) {
+            const similarity = compareFaces(faceLandmarks, candidateUser.faceLandmarks);
+            if (similarity >= 0.75 && similarity > bestSimilarity) {
+              bestMatch = candidateUser;
+              bestSimilarity = similarity;
+            }
+          }
+        }
+        
+        if (bestMatch) {
+          user = bestMatch;
+          console.log(`✅ Found user by face landmarks: ${(bestSimilarity * 100).toFixed(2)}% similarity`);
+          
+          // Optional: If fingerprint also provided, verify it matches (additional security)
+          if (hasFingerprint && user.fingerprintData) {
+            if (user.fingerprintData !== fingerprintPublicKey) {
+              console.log('⚠️ Security: Fingerprint mismatch (face matched but wrong device)');
+              return res.status(403).json({ 
+                message: 'البصمة غير متطابقة مع المستخدم المسجل' 
+              });
+            }
+            console.log('✅ Fingerprint also verified (additional security)');
+          }
+          
+          // Verify face is enabled
+          if (!user.faceIdEnabled) {
+            return res.status(403).json({ 
+              message: 'المصادقة الحيوية غير مفعلة لهذا الحساب' 
+            });
+          }
+
+          user.lastLogin = new Date();
+          await user.save();
+
+          const token = GenerateToken(user._id, res);
+          return res.status(200).json({
+            message: hasFingerprint 
+              ? 'تم تسجيل الدخول بنجاح بالوجه والبصمة'
+              : 'تم تسجيل الدخول بنجاح بالوجه',
+            user: {
+              _id: user._id,
+              employeeNumber: user.employeeNumber,
+              email: user.email,
+              fullName: user.fullName,
+              role: user.role,
+              department: user.department,
+              position: user.position,
+              faceIdEnabled: user.faceIdEnabled,
+              twoFactorEnabled: user.twoFactorEnabled,
+              attendancePoints: user.attendancePoints,
+              fingerprintData: user.fingerprintData,
+              faceId: user.faceId
+            },
+            token
+          });
+        } else {
+          console.log('❌ No user found with matching face landmarks');
+          return res.status(401).json({ 
+            message: 'الوجه غير مسجل أو غير صحيح' 
+          });
+        }
+      }
+
+      // Face-only login (no fingerprint): find user by faceId or email/employeeNumber
       if (!email && !employeeNumber) {
         // Face-only login: find user by faceId
         if (faceIdValue) {
@@ -720,20 +797,9 @@ export const loginWithBiometric = async (req, res) => {
         }
       }
 
-      // SECURITY CHECK 1: Verify fingerprint if provided
-      if (hasFingerprint) {
-        if (user.fingerprintData && user.fingerprintData !== fingerprintPublicKey) {
-          console.log('⚠️ Security: Fingerprint mismatch!');
-          return res.status(403).json({ 
-            message: 'البصمة غير متطابقة مع المستخدم المسجل' 
-          });
-        }
-        console.log('✅ Security: Fingerprint verified');
-      }
-
-      // SECURITY CHECK 2: Verify face landmarks (REQUIRED when face is provided)
+      // SECURITY CHECK: Verify face landmarks (REQUIRED when face is provided)
       if (faceLandmarks && user.faceLandmarks) {
-        const landmarkCheck = verifyFaceSimilarity(faceLandmarks, user.faceLandmarks, 'login');
+        const landmarkCheck = verifyFaceSimilarity(faceLandmarks, user.faceLandmarks, 'login-faceOnly');
         if (!landmarkCheck.verified) {
           console.log(`❌ Face similarity too low: ${(landmarkCheck.similarity * 100).toFixed(2)}%`);
           return res.status(401).json({ 
@@ -768,9 +834,7 @@ export const loginWithBiometric = async (req, res) => {
 
       const token = GenerateToken(user._id, res);
       return res.status(200).json({
-        message: hasFingerprint && hasFace 
-          ? 'تم تسجيل الدخول بنجاح بالبصمة والوجه'
-          : 'تم تسجيل الدخول بنجاح بالوجه',
+        message: 'تم تسجيل الدخول بنجاح بالوجه',
         user: {
           _id: user._id,
           employeeNumber: user.employeeNumber,
