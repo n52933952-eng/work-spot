@@ -785,15 +785,24 @@ export const loginWithBiometric = async (req, res) => {
           user = bestMatch;
           console.log(`✅ Found user by face landmarks: ${(bestSimilarity * 100).toFixed(2)}% similarity`);
           
-          // Optional: If fingerprint also provided, verify it matches (additional security)
-          if (hasFingerprint && user.fingerprintData) {
-            if (user.fingerprintData !== fingerprintPublicKey) {
-              console.log('⚠️ Security: Fingerprint mismatch (face matched but wrong device)');
+          // SECURITY: If user has a registered device, device verification is REQUIRED
+          // This prevents users from logging in from other people's devices
+          if (user.fingerprintData) {
+            if (!hasFingerprint || !fingerprintPublicKey) {
+              console.log('⚠️ Security: User has registered device but no fingerprint provided');
               return res.status(403).json({ 
-                message: 'البصمة غير متطابقة مع المستخدم المسجل' 
+                message: 'يرجى تسجيل الدخول من الجهاز المسجل لديك أو استخدام البصمة للتحقق' 
               });
             }
-            console.log('✅ Fingerprint also verified (additional security)');
+            if (user.fingerprintData !== fingerprintPublicKey) {
+              console.log('⚠️ Security: Fingerprint mismatch (face matched but wrong device)');
+              console.log('⚠️ Security: User registered device:', user.fingerprintData.substring(0, 20) + '...');
+              console.log('⚠️ Security: Current device:', fingerprintPublicKey.substring(0, 20) + '...');
+              return res.status(403).json({ 
+                message: 'البصمة غير متطابقة مع المستخدم المسجل. يرجى تسجيل الدخول من جهازك المسجل.' 
+              });
+            }
+            console.log('✅ Fingerprint verified - user logging in from registered device');
           }
           
           // Verify face is enabled
