@@ -202,7 +202,11 @@ export const completeRegistration = async (req, res) => {
       }).select('faceEmbedding _id email fullName fingerprintData');
       
       if (allUsersWithEmbeddings.length > 0) {
-        const match = findMatchingUser(validatedEmbedding, allUsersWithEmbeddings, 0.6); // 0.6 threshold for registration
+        // Registration duplicate check must be VERY STRICT (0.95 = 95%)
+        // Only block if we're VERY sure it's the same person
+        // Different people (even family members) can have 90-95% similarity
+        // We only want to block if similarity >= 95% (very confident it's the same person)
+        const match = findMatchingUser(validatedEmbedding, allUsersWithEmbeddings, 0.95); // 0.95 threshold for registration (very strict)
         
         if (match) {
           console.log(`⚠️ Duplicate face detected using embeddings!`);

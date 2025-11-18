@@ -98,3 +98,5 @@ export const compareFaceEmbeddings = (embedding1, embedding2, threshold = 0.6) =
   };
 };
 
+
+
