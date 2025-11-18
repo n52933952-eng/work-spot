@@ -215,11 +215,12 @@ export const completeRegistration = async (req, res) => {
       console.log(`📊 Checking ${userCount} users with embeddings...`);
       
       if (userCount > 0) {
-        // Registration duplicate check must be VERY STRICT (0.95 = 95%)
-        // Only block if we're VERY sure it's the same person
-        // Different people (even family members) can have 90-95% similarity
-        // We only want to block if similarity >= 95% (very confident it's the same person)
-        const match = findMatchingUser(validatedEmbedding, allUsersWithEmbeddings, 0.95); // 0.95 threshold for registration (very strict)
+        // Registration duplicate check must be EXTREMELY STRICT (0.97 = 97%)
+        // Only block if we're EXTREMELY sure it's the same person
+        // Different people (even family members) can have 90-97% similarity
+        // We only want to block if similarity >= 97% (extremely confident it's the same person)
+        // Note: This is stricter than landmark-based check (96%) because embeddings can have higher false positives
+        const match = findMatchingUser(validatedEmbedding, allUsersWithEmbeddings, 0.97); // 0.97 threshold for registration (extremely strict)
         
         const searchTime = Date.now() - startTime;
         console.log(`⏱️ Embedding search completed in ${searchTime}ms (checked ${userCount} users)`);
