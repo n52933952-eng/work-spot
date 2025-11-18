@@ -13,9 +13,10 @@ import {
 } from '../utils/attendanceCalculation.js';
 import { sendLateNotification } from '../utils/notifications.js';
 import { compareFaces } from '../utils/faceLandmarkSimilarity.js';
+import { generateFaceEmbedding, cosineSimilarity } from '../utils/faceRecognition.js';
 
-const verifyFaceForAttendance = async (userId, faceId, faceLandmarks) => {
-  const user = await User.findById(userId).select('faceId faceLandmarks');
+const verifyFaceForAttendance = async (userId, faceId, faceLandmarks, faceImage) => {
+  const user = await User.findById(userId).select('faceId faceLandmarks faceEmbedding');
   if (!user) {
     return {
       verified: false,
@@ -23,6 +24,54 @@ const verifyFaceForAttendance = async (userId, faceId, faceLandmarks) => {
     };
   }
 
+  // PRIORITY 1: Use faceImage for embedding-based verification (NEW - most accurate)
+  if (faceImage) {
+    try {
+      console.log('🔄 Generating face embedding from attendance image...');
+      const attendanceEmbedding = await generateFaceEmbedding(faceImage);
+      
+      if (!attendanceEmbedding) {
+        console.log('⚠️ No face detected in attendance image');
+        return {
+          verified: false,
+          message: 'لم يتم اكتشاف وجه في الصورة. يرجى المحاولة مرة أخرى.',
+        };
+      }
+      
+      // Check if user has faceEmbedding stored
+      if (!user.faceEmbedding || !Array.isArray(user.faceEmbedding) || user.faceEmbedding.length === 0) {
+        console.log('❌ User does not have faceEmbedding stored - need to re-register biometrics');
+        return {
+          verified: false,
+          message: 'يرجى إعادة تسجيل بيانات الوجه (إعداد المصادقة الحيوية)',
+        };
+      }
+      
+      // Compare embeddings using cosine similarity
+      const similarity = cosineSimilarity(attendanceEmbedding, user.faceEmbedding);
+      console.log(`🔍 Attendance face similarity (embedding): ${(similarity * 100).toFixed(2)}%`);
+      
+      // Threshold: 0.6 for attendance (same as login)
+      if (similarity >= 0.6) {
+        console.log(`✅ Face verified for attendance: ${(similarity * 100).toFixed(2)}% similarity`);
+        return {
+          verified: true,
+          message: null,
+        };
+      } else {
+        console.log(`❌ Face similarity too low: ${(similarity * 100).toFixed(2)}% < 60%`);
+        return {
+          verified: false,
+          message: 'الوجه غير متطابق مع المستخدم المسجل',
+        };
+      }
+    } catch (error) {
+      console.error('❌ Error during embedding-based verification:', error);
+      // Fall through to landmark-based verification
+    }
+  }
+  
+  // PRIORITY 2: Fallback to landmark-based verification (for backward compatibility)
   // REQUIRE faceLandmarks for verification (most secure method)
   // If user doesn't have faceLandmarks stored, they need to re-register biometrics
   if (!user.faceLandmarks) {
@@ -95,18 +144,18 @@ const verifyFaceForAttendance = async (userId, faceId, faceLandmarks) => {
 export const checkIn = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { latitude, longitude, address, faceId, faceLandmarks, faceIdVerified, qrCodeId } = req.body;
+    const { latitude, longitude, address, faceId, faceImage, faceLandmarks, faceIdVerified, qrCodeId } = req.body;
     
     // If faceIdVerified is true OR face data is provided, face verification is REQUIRED
     let verifiedFace = false;
-    if (faceIdVerified || faceId || faceLandmarks) {
-      if (!faceId && !faceLandmarks) {
+    if (faceIdVerified || faceId || faceImage || faceLandmarks) {
+      if (!faceId && !faceImage && !faceLandmarks) {
         return res.status(400).json({ 
-          message: 'يرجى إرسال بيانات الوجه للتحقق (faceId أو faceLandmarks)' 
+          message: 'يرجى إرسال بيانات الوجه للتحقق (faceId أو faceImage أو faceLandmarks)' 
         });
       }
       
-      const verification = await verifyFaceForAttendance(userId, faceId, faceLandmarks);
+      const verification = await verifyFaceForAttendance(userId, faceId, faceLandmarks, faceImage);
       if (!verification.verified) {
         console.log(`❌ Check-in rejected: ${verification.message}`);
         return res.status(401).json({ 
@@ -301,18 +350,18 @@ export const checkIn = async (req, res) => {
 export const checkOut = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { latitude, longitude, address, faceId, faceLandmarks, faceIdVerified, qrCodeId } = req.body;
+    const { latitude, longitude, address, faceId, faceImage, faceLandmarks, faceIdVerified, qrCodeId } = req.body;
     
     // If faceIdVerified is true OR face data is provided, face verification is REQUIRED
     let verifiedFace = false;
-    if (faceIdVerified || faceId || faceLandmarks) {
-      if (!faceId && !faceLandmarks) {
+    if (faceIdVerified || faceId || faceImage || faceLandmarks) {
+      if (!faceId && !faceImage && !faceLandmarks) {
         return res.status(400).json({ 
-          message: 'يرجى إرسال بيانات الوجه للتحقق (faceId أو faceLandmarks)' 
+          message: 'يرجى إرسال بيانات الوجه للتحقق (faceId أو faceImage أو faceLandmarks)' 
         });
       }
       
-      const verification = await verifyFaceForAttendance(userId, faceId, faceLandmarks);
+      const verification = await verifyFaceForAttendance(userId, faceId, faceLandmarks, faceImage);
       if (!verification.verified) {
         console.log(`❌ Check-out rejected: ${verification.message}`);
         return res.status(401).json({ 
