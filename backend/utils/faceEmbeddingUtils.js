@@ -63,6 +63,7 @@ export const findMatchingUser = (embedding, users, threshold = 0.6) => {
 
   let bestMatch = null;
   let bestSimilarity = 0;
+  const VERY_HIGH_MATCH = 0.98; // Early exit if we find a 98%+ match (very confident)
 
   for (const user of users) {
     if (!user.faceEmbedding || !Array.isArray(user.faceEmbedding) || user.faceEmbedding.length === 0) {
@@ -74,6 +75,12 @@ export const findMatchingUser = (embedding, users, threshold = 0.6) => {
     if (similarity >= threshold && similarity > bestSimilarity) {
       bestSimilarity = similarity;
       bestMatch = { user, similarity };
+      
+      // OPTIMIZATION: Early exit if we find a very high match (98%+)
+      // This saves time when checking many users
+      if (similarity >= VERY_HIGH_MATCH) {
+        break; // No need to check remaining users
+      }
     }
   }
 

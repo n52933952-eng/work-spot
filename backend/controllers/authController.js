@@ -197,16 +197,36 @@ export const completeRegistration = async (req, res) => {
     // Priority: Use embeddings if available, fallback to landmarks
     if (validatedEmbedding) {
       console.log('🔍 Checking for duplicate faces using embeddings...');
-      const allUsersWithEmbeddings = await User.find({ 
-        faceEmbedding: { $exists: true, $ne: null } 
-      }).select('faceEmbedding _id email fullName fingerprintData');
+      const startTime = Date.now();
       
-      if (allUsersWithEmbeddings.length > 0) {
+      // OPTIMIZATION: Limit search scope for scalability
+      // Only check active users (isActive: true) to reduce search space
+      // Limit to 5000 users max to prevent performance issues
+      // In production with many users, consider using a vector database (MongoDB Atlas Vector Search, Pinecone, etc.)
+      const allUsersWithEmbeddings = await User.find({ 
+        faceEmbedding: { $exists: true, $ne: null },
+        isActive: true // Only check active users
+      })
+      .select('faceEmbedding _id email fullName fingerprintData')
+      .limit(5000) // Safety limit: max 5000 users to check
+      .lean(); // Use lean() for better performance (returns plain JS objects)
+      
+      const userCount = allUsersWithEmbeddings.length;
+      console.log(`📊 Checking ${userCount} users with embeddings...`);
+      
+      if (userCount > 0) {
         // Registration duplicate check must be VERY STRICT (0.95 = 95%)
         // Only block if we're VERY sure it's the same person
         // Different people (even family members) can have 90-95% similarity
         // We only want to block if similarity >= 95% (very confident it's the same person)
         const match = findMatchingUser(validatedEmbedding, allUsersWithEmbeddings, 0.95); // 0.95 threshold for registration (very strict)
+        
+        const searchTime = Date.now() - startTime;
+        console.log(`⏱️ Embedding search completed in ${searchTime}ms (checked ${userCount} users)`);
+        
+        if (userCount >= 5000) {
+          console.log('⚠️ WARNING: Reached 5000 user limit. Consider using a vector database for better scalability.');
+        }
         
         if (match) {
           console.log(`⚠️ Duplicate face detected using embeddings!`);
@@ -805,14 +825,24 @@ export const loginWithBiometric = async (req, res) => {
       if (hasFaceEmbedding) {
         try {
           console.log('🔍 Searching for user by face embedding (from device)...');
+          const loginStartTime = Date.now();
+          
+          // OPTIMIZATION: Limit search scope for scalability (same as registration)
           const allUsers = await User.find({ 
-            faceEmbedding: { $exists: true, $ne: null } 
-          }).select('faceEmbedding _id email employeeNumber fullName faceIdEnabled fingerprintData');
+            faceEmbedding: { $exists: true, $ne: null },
+            isActive: true // Only check active users
+          })
+          .select('faceEmbedding _id email employeeNumber fullName faceIdEnabled fingerprintData')
+          .limit(5000) // Safety limit: max 5000 users to check
+          .lean(); // Use lean() for better performance
           
           console.log(`📋 Found ${allUsers.length} users with faceEmbedding to compare`);
           
-          // Find best match using embedding comparison (threshold: 0.6 for login)
+          // Find best match using embedding comparison (threshold: 0.6 for login - more lenient than registration)
           const match = findMatchingUser(faceEmbedding, allUsers, 0.6);
+          
+          const loginSearchTime = Date.now() - loginStartTime;
+          console.log(`⏱️ Login embedding search completed in ${loginSearchTime}ms`);
           
           if (match) {
             user = match.user;
