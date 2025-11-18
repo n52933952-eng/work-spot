@@ -67,8 +67,12 @@ const userSchema = new mongoose.Schema({
     type: String, // Face ID (hash) for face recognition (kept for backward compatibility)
     default: null
   },
+  faceEmbedding: {
+    type: [Number], // 128-D face embedding array from face-api
+    default: null
+  },
   faceLandmarks: {
-    type: mongoose.Schema.Types.Mixed, // Store normalized face landmarks for similarity matching
+    type: mongoose.Schema.Types.Mixed, // Store normalized face landmarks for similarity matching (DEPRECATED - kept for backward compatibility)
     // Structure: {
     //   leftEye: { x: number, y: number },
     //   rightEye: { x: number, y: number },

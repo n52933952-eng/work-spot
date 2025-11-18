@@ -54,6 +54,15 @@ import('./utils/scheduler.js').then(module => {
   console.error('Scheduler initialization error:', error)
 })
 
+// Load face recognition models on startup
+import('./utils/faceRecognition.js').then(module => {
+  module.loadFaceModels().catch(error => {
+    console.error('Face models loading error:', error)
+  })
+}).catch(error => {
+  console.error('Face recognition module initialization error:', error)
+})
+
 
 const __dirname = path.resolve()
 
