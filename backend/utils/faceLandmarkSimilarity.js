@@ -45,6 +45,11 @@ const normalizeLandmarks = (landmarks, faceFrame) => {
     mouthLeft: getNormalizedPos(landmarks.mouthLeft),
     mouthRight: getNormalizedPos(landmarks.mouthRight),
     mouthBottom: getNormalizedPos(landmarks.mouthBottom),
+    // Add more landmarks for better distinction between different people
+    leftCheek: getNormalizedPos(landmarks.leftCheek),
+    rightCheek: getNormalizedPos(landmarks.rightCheek),
+    leftEar: getNormalizedPos(landmarks.leftEar),
+    rightEar: getNormalizedPos(landmarks.rightEar),
   };
 
   // Calculate stable features
@@ -132,56 +137,66 @@ export const compareLandmarks = (landmarks1, landmarks2) => {
   let totalSimilarity = 0;
   let featureCount = 0;
 
-  // 1. Eye distance comparison (very stable)
+  // 1. Eye distance comparison (very stable) - REDUCED WEIGHT
   if (landmarks1.eyeDistance && landmarks2.eyeDistance) {
     const eyeDistDiff = Math.abs(landmarks1.eyeDistance - landmarks2.eyeDistance);
     const maxEyeDist = Math.max(landmarks1.eyeDistance, landmarks2.eyeDistance, 0.01);
     const eyeDistSimilarity = 1 - Math.min(eyeDistDiff / maxEyeDist, 1);
-    totalSimilarity += eyeDistSimilarity * 0.2; // 20% weight
-    featureCount += 0.2;
+    totalSimilarity += eyeDistSimilarity * 0.1; // Reduced from 20% to 10% weight
+    featureCount += 0.1;
   }
 
-  // 2. Nose-eye relative positions (stable)
+  // 2. Nose-eye relative positions (stable) - REDUCED WEIGHT
   if (landmarks1.noseToEyeDistance && landmarks2.noseToEyeDistance) {
     const noseEyeDiff = Math.abs(landmarks1.noseToEyeDistance - landmarks2.noseToEyeDistance);
     const maxNoseEye = Math.max(landmarks1.noseToEyeDistance, landmarks2.noseToEyeDistance, 0.01);
     const noseEyeSimilarity = 1 - Math.min(noseEyeDiff / maxNoseEye, 1);
-    totalSimilarity += noseEyeSimilarity * 0.15; // 15% weight
-    featureCount += 0.15;
+    totalSimilarity += noseEyeSimilarity * 0.08; // Reduced from 15% to 8% weight
+    featureCount += 0.08;
   }
 
-  // 3. Mouth-nose relative positions (stable)
+  // 3. Mouth-nose relative positions (stable) - REDUCED WEIGHT
   if (landmarks1.mouthToNoseDistance && landmarks2.mouthToNoseDistance) {
     const mouthNoseDiff = Math.abs(landmarks1.mouthToNoseDistance - landmarks2.mouthToNoseDistance);
     const maxMouthNose = Math.max(landmarks1.mouthToNoseDistance, landmarks2.mouthToNoseDistance, 0.01);
     const mouthNoseSimilarity = 1 - Math.min(mouthNoseDiff / maxMouthNose, 1);
-    totalSimilarity += mouthNoseSimilarity * 0.15; // 15% weight
-    featureCount += 0.15;
+    totalSimilarity += mouthNoseSimilarity * 0.08; // Reduced from 15% to 8% weight
+    featureCount += 0.08;
   }
 
-  // 4. Face proportions (width/height ratio)
+  // 4. Face proportions (width/height ratio) - REDUCED WEIGHT
   if (landmarks1.faceAspectRatio && landmarks2.faceAspectRatio) {
     const aspectDiff = Math.abs(landmarks1.faceAspectRatio - landmarks2.faceAspectRatio);
     const maxAspect = Math.max(landmarks1.faceAspectRatio, landmarks2.faceAspectRatio, 0.01);
     const aspectSimilarity = 1 - Math.min(aspectDiff / maxAspect, 1);
-    totalSimilarity += aspectSimilarity * 0.1; // 10% weight
-    featureCount += 0.1;
+    totalSimilarity += aspectSimilarity * 0.05; // Reduced from 10% to 5% weight
+    featureCount += 0.05;
   }
 
-  // 5. Individual landmark positions (normalized)
+  // 5. Individual landmark positions (normalized) - INCREASED WEIGHT AND STRICTER
+  // These are more distinguishing than proportions, so we weight them more heavily
   const landmarkPositions = [
-    { key: 'leftEye', weight: 0.1 },
-    { key: 'rightEye', weight: 0.1 },
-    { key: 'noseBase', weight: 0.1 },
-    { key: 'mouthLeft', weight: 0.05 },
-    { key: 'mouthRight', weight: 0.05 },
+    { key: 'leftEye', weight: 0.12 },
+    { key: 'rightEye', weight: 0.12 },
+    { key: 'noseBase', weight: 0.12 },
+    { key: 'mouthLeft', weight: 0.08 },
+    { key: 'mouthRight', weight: 0.08 },
+    { key: 'mouthBottom', weight: 0.08 },
+    // Add cheek landmarks if available (help distinguish different faces)
+    { key: 'leftCheek', weight: 0.06 },
+    { key: 'rightCheek', weight: 0.06 },
+    // Add ear landmarks if available
+    { key: 'leftEar', weight: 0.05 },
+    { key: 'rightEar', weight: 0.05 },
   ];
 
   for (const { key, weight } of landmarkPositions) {
     if (landmarks1[key] && landmarks2[key]) {
       const dist = landmarkDistance(landmarks1[key], landmarks2[key]);
-      // Normalize distance (max expected distance is ~1.0 for normalized coordinates)
-      const similarity = 1 - Math.min(dist / 1.0, 1);
+      // STRICTER: Use 0.5 as max distance instead of 1.0
+      // This means even small differences (0.25) give only 50% similarity
+      // Previously: dist=0.5 → similarity=50%, now: dist=0.5 → similarity=0%
+      const similarity = 1 - Math.min(dist / 0.5, 1);
       totalSimilarity += similarity * weight;
       featureCount += weight;
     }
