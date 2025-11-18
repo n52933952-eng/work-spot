@@ -54,13 +54,14 @@ import('./utils/scheduler.js').then(module => {
   console.error('Scheduler initialization error:', error)
 })
 
-// Load face recognition models on startup
+// Load face recognition models on startup (non-blocking - server will start even if this fails)
 import('./utils/faceRecognition.js').then(module => {
   module.loadFaceModels().catch(error => {
-    console.error('Face models loading error:', error)
+    console.error('⚠️ Face models loading error (face recognition will use fallback):', error.message)
+    console.error('⚠️ Server will continue running - face recognition features may not work until this is fixed')
   })
 }).catch(error => {
-  console.error('Face recognition module initialization error:', error)
+  console.error('⚠️ Face recognition module initialization error (server will continue):', error.message)
 })
 
 

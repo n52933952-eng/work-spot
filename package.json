@@ -4,16 +4,17 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
- "dev":"nodemon backend/index.js",
+    "dev": "nodemon backend/index.js",
     "start": "node backend/index.js",
-    "build":"npm install && npm install --prefix frontent && npm run build --prefix frontent",
-    "setup:location": "node backend/scripts/createDefaultLocation.js" 
+    "build": "npm install && npm install --prefix frontent && npm run build --prefix frontent",
+    "setup:location": "node backend/scripts/createDefaultLocation.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0",
     "@vladmandic/face-api": "^1.7.14",
     "bcryptjs": "^3.0.3",
     "canvas": "^2.11.2",

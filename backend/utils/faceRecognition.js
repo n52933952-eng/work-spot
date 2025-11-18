@@ -3,11 +3,47 @@
  * Generates 128-D embeddings for face comparison
  */
 
-import * as faceapi from '@vladmandic/face-api';
 import { createCanvas, loadImage } from 'canvas';
+
+// Lazy load face-api to avoid module loading issues
+let faceapi = null;
+let tf = null;
 
 // Initialize face-api models (load once on startup)
 let modelsLoaded = false;
+
+// Lazy load face-api module
+const loadFaceApi = async () => {
+  if (faceapi) return faceapi;
+  
+  try {
+    // Dynamic import to handle module loading
+    const tfModule = await import('@tensorflow/tfjs');
+    tf = tfModule.default || tfModule;
+    
+    const faceApiModule = await import('@vladmandic/face-api');
+    faceapi = faceApiModule.default || faceApiModule;
+    
+    // Set up face-api environment for Node.js
+    if (faceapi.env && faceapi.env.monkeyPatch) {
+      faceapi.env.monkeyPatch({ 
+        Canvas: createCanvas, 
+        Image: loadImage,
+        createCanvasElement: () => createCanvas(1, 1),
+        createImageData: (data, width, height) => {
+          const canvas = createCanvas(width, height);
+          const ctx = canvas.getContext('2d');
+          return ctx.createImageData(width, height);
+        }
+      });
+    }
+    
+    return faceapi;
+  } catch (error) {
+    console.error('❌ Error loading face-api module:', error);
+    throw error;
+  }
+};
 
 /**
  * Load face-api models (call this once at server startup)
@@ -19,6 +55,9 @@ export const loadFaceModels = async () => {
   }
 
   try {
+    // Load face-api module first
+    await loadFaceApi();
+    
     console.log('🔄 Loading face-api models...');
     
     // Load required models from CDN (models will be cached after first load)
@@ -66,6 +105,9 @@ const base64ToCanvas = async (base64String) => {
  * @returns {Promise<Float32Array|null>} - 128-D face embedding or null if no face detected
  */
 export const generateFaceEmbedding = async (base64Image) => {
+  // Ensure face-api is loaded
+  await loadFaceApi();
+  
   if (!modelsLoaded) {
     await loadFaceModels();
   }
