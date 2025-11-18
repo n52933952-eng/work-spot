@@ -125,15 +125,17 @@ export const completeRegistration = async (req, res) => {
         const similarity = compareFaces(normalizedLandmarks, existingFingerprintUser.faceLandmarks);
         console.log(`   Face similarity check: ${(similarity * 100).toFixed(1)}%`);
         
-        if (similarity >= 0.75) {
+        // Increased threshold from 75% to 90% to prevent false matches between different people
+        // 90% is high enough to catch same person, but low enough to allow different people
+        if (similarity >= 0.90) {
           // Same person trying to register again on same device
           console.log(`   ✅ Same person detected (face similarity: ${(similarity * 100).toFixed(1)}%)`);
           return res.status(400).json({ 
             message: 'أنت مسجل بالفعل على هذا الجهاز. يرجى تسجيل الدخول بدلاً من التسجيل مرة أخرى.' 
           });
         } else {
-          // Different person (face similarity < 75%) on same device - BLOCKED
-          console.log(`   ❌ Different person detected (face similarity: ${(similarity * 100).toFixed(1)}% < 75%)`);
+          // Different person (face similarity < 90%) on same device - BLOCKED
+          console.log(`   ❌ Different person detected (face similarity: ${(similarity * 100).toFixed(1)}% < 90%)`);
           return res.status(400).json({ 
             message: 'هذا الجهاز مستخدم بالفعل. يرجى استخدام جهاز آخر أو تسجيل الدخول بالحساب المسجل على هذا الجهاز.' 
           });
@@ -187,9 +189,10 @@ export const completeRegistration = async (req, res) => {
           // user.faceLandmarks is already normalized, so pass it directly
           const similarity = compareFaces(normalizedLandmarks, user.faceLandmarks);
           
-          // Threshold: 0.75 (75%) similarity = same face
-          // This is reliable because landmarks are stable for the same person
-          if (similarity >= 0.75) {
+          // Threshold: 0.90 (90%) similarity = same face
+          // Increased from 75% to 90% to prevent false matches between different people
+          // 90% is high enough to catch same person, but low enough to allow different people
+          if (similarity >= 0.90) {
             console.log(`⚠️ Duplicate face detected using landmarks!`);
             console.log(`   Similarity: ${(similarity * 100).toFixed(1)}%`);
             console.log(`   Existing user: ${user.email || user.fullName}`);
@@ -593,7 +596,8 @@ const verifyFaceSimilarity = (incomingLandmarks, storedLandmarks, context = 'log
   try {
     const similarity = compareFaces(incomingLandmarks, storedLandmarks);
     console.log(`🔍 Face similarity (${context}): ${(similarity * 100).toFixed(2)}%`);
-    if (similarity >= 0.75) {
+    // Increased threshold from 75% to 94.55% to match main login threshold and prevent false matches
+    if (similarity >= 0.9455) {
       return { verified: true, similarity };
     }
     return { verified: false, similarity };
