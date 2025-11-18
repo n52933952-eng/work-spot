@@ -20,6 +20,7 @@ export const completeRegistration = async (req, res) => {
       latitude, // User's location latitude
       longitude, // User's location longitude
       fingerprintPublicKey, // Fingerprint ID
+      faceEmbedding, // Face embedding (128-D array) - generated on-device
       faceImage, // Base64 image
       faceId, // Face ID (hash)
       faceFeatures, // Face features from ML Kit (contains landmarks)
@@ -738,7 +739,7 @@ export const loginWithBiometric = async (req, res) => {
       }
 
       if (!user.fingerprintData) {
-        return res.status(400).json({ 
+      return res.status(400).json({ 
           message: 'لم يتم تسجيل بيانات البصمة لهذا المستخدم' 
         });
       }
@@ -1011,17 +1012,17 @@ export const loginWithBiometric = async (req, res) => {
       } else {
         // Face + email/employeeNumber: find user by credentials
         user = await User.findOne({
-          $or: [
-            email ? { email } : null,
-            employeeNumber ? { employeeNumber } : null
-          ].filter(Boolean)
-        });
+      $or: [
+        email ? { email } : null,
+        employeeNumber ? { employeeNumber } : null
+      ].filter(Boolean)
+    });
 
-        if (!user) {
-          return res.status(401).json({ 
-            message: 'المستخدم غير موجود' 
-          });
-        }
+    if (!user) {
+      return res.status(401).json({ 
+        message: 'المستخدم غير موجود' 
+      });
+    }
 
         if (!user.faceLandmarks && !user.faceId) {
           return res.status(400).json({ 
@@ -1049,40 +1050,40 @@ export const loginWithBiometric = async (req, res) => {
         }
         console.log('✅ FaceId hash verified (fallback - landmarks not available)');
       } else {
-        return res.status(400).json({ 
-          message: 'لم يتم تسجيل بيانات الوجه لهذا المستخدم' 
-        });
-      }
+      return res.status(400).json({ 
+        message: 'لم يتم تسجيل بيانات الوجه لهذا المستخدم' 
+      });
+    }
 
       // Verify face is enabled
-      if (!user.faceIdEnabled) {
-        return res.status(403).json({ 
-          message: 'المصادقة الحيوية غير مفعلة لهذا الحساب' 
-        });
-      }
+    if (!user.faceIdEnabled) {
+      return res.status(403).json({ 
+        message: 'المصادقة الحيوية غير مفعلة لهذا الحساب' 
+      });
+    }
 
       // All checks passed - login successful
-      user.lastLogin = new Date();
-      await user.save();
+    user.lastLogin = new Date();
+    await user.save();
 
-      const token = GenerateToken(user._id, res);
+    const token = GenerateToken(user._id, res);
       return res.status(200).json({
         message: 'تم تسجيل الدخول بنجاح بالوجه',
-        user: {
-          _id: user._id,
-          employeeNumber: user.employeeNumber,
-          email: user.email,
-          fullName: user.fullName,
-          role: user.role,
-          department: user.department,
-          position: user.position,
-          faceIdEnabled: user.faceIdEnabled,
-          twoFactorEnabled: user.twoFactorEnabled,
+      user: {
+        _id: user._id,
+        employeeNumber: user.employeeNumber,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        department: user.department,
+        position: user.position,
+        faceIdEnabled: user.faceIdEnabled,
+        twoFactorEnabled: user.twoFactorEnabled,
           attendancePoints: user.attendancePoints,
           fingerprintData: user.fingerprintData,
           faceId: user.faceId
-        },
-        token
+      },
+      token
       });
     }
 
