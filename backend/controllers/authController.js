@@ -834,8 +834,7 @@ export const loginWithBiometric = async (req, res) => {
             isActive: true // Only check active users
           })
           .select('faceEmbedding _id email employeeNumber fullName faceIdEnabled fingerprintData')
-          .limit(5000) // Safety limit: max 5000 users to check
-          .lean(); // Use lean() for better performance
+          .limit(5000); // Safety limit: max 5000 users to check
           
           console.log(`📋 Found ${allUsers.length} users with faceEmbedding to compare`);
           
