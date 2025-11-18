@@ -125,17 +125,20 @@ export const completeRegistration = async (req, res) => {
         const similarity = compareFaces(normalizedLandmarks, existingFingerprintUser.faceLandmarks);
         console.log(`   Face similarity check: ${(similarity * 100).toFixed(1)}%`);
         
-        // Increased threshold from 75% to 90% to prevent false matches between different people
-        // 90% is high enough to catch same person, but low enough to allow different people
-        if (similarity >= 0.90) {
+        // Increased threshold from 90% to 96% to prevent false matches between different people
+        // 96% is very strict - only block if we're VERY sure it's the same person
+        // This prevents false positives when different people use the same device
+        if (similarity >= 0.96) {
           // Same person trying to register again on same device
           console.log(`   ✅ Same person detected (face similarity: ${(similarity * 100).toFixed(1)}%)`);
           return res.status(400).json({ 
             message: 'أنت مسجل بالفعل على هذا الجهاز. يرجى تسجيل الدخول بدلاً من التسجيل مرة أخرى.' 
           });
         } else {
-          // Different person (face similarity < 90%) on same device - BLOCKED
-          console.log(`   ❌ Different person detected (face similarity: ${(similarity * 100).toFixed(1)}% < 90%)`);
+          // Different person (face similarity < 96%) on same device - BLOCKED
+          // Even if similarity is 90-95%, if fingerprintPublicKey matches, it's the same device
+          // But we're being lenient: only block if similarity >= 96% (very sure it's same person)
+          console.log(`   ❌ Different person detected (face similarity: ${(similarity * 100).toFixed(1)}% < 96%)`);
           return res.status(400).json({ 
             message: 'هذا الجهاز مستخدم بالفعل. يرجى استخدام جهاز آخر أو تسجيل الدخول بالحساب المسجل على هذا الجهاز.' 
           });
@@ -189,10 +192,13 @@ export const completeRegistration = async (req, res) => {
           // user.faceLandmarks is already normalized, so pass it directly
           const similarity = compareFaces(normalizedLandmarks, user.faceLandmarks);
           
-          // Threshold: 0.90 (90%) similarity = same face
-          // Increased from 75% to 90% to prevent false matches between different people
-          // 90% is high enough to catch same person, but low enough to allow different people
-          if (similarity >= 0.90) {
+          // Threshold: 0.96 (96%) similarity = same face (VERY STRICT for registration)
+          // Increased from 90% to 96% to prevent false matches between different people
+          // Registration duplicate check must be very strict because:
+          // - Different people (even family members) can have 90-95% similarity
+          // - We only want to block if we're VERY sure it's the same person (>=96%)
+          // - Login uses 94.55% which is appropriate for authentication
+          if (similarity >= 0.96) {
             console.log(`⚠️ Duplicate face detected using landmarks!`);
             console.log(`   Similarity: ${(similarity * 100).toFixed(1)}%`);
             console.log(`   Existing user: ${user.email || user.fullName}`);
@@ -232,6 +238,14 @@ export const completeRegistration = async (req, res) => {
                 });
               }
             }
+          } else if (similarity >= 0.90 && similarity < 0.96) {
+            // Similarity between 90-96%: Could be same person OR different person
+            // If fingerprintPublicKey is different, it's likely a different person on different device
+            // Allow registration in this case (don't block)
+            console.log(`⚠️ Face similarity is ${(similarity * 100).toFixed(1)}% (between 90-96%)`);
+            console.log(`   This could be same person OR different person`);
+            console.log(`   Since fingerprintPublicKey is different, allowing registration (likely different person)`);
+            // Continue to next user or allow registration
           }
         }
       }
