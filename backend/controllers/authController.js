@@ -2,7 +2,7 @@ import User from '../modles/User.js';
 import Attendance from '../modles/Attendance.js';
 import GenerateToken from '../utils/GenerateToken.js';
 import { extractNormalizedLandmarks, compareFaces } from '../utils/faceLandmarkSimilarity.js';
-import { generateFaceEmbedding, findMatchingUser, compareFaces as compareFaceEmbeddings } from '../utils/faceRecognition.js';
+import { findMatchingUser, cosineSimilarity } from '../utils/faceEmbeddingUtils.js';
 
 // Complete registration with biometric data
 export const completeRegistration = async (req, res) => {
@@ -53,26 +53,19 @@ export const completeRegistration = async (req, res) => {
     
     console.log('✅ Biometric data validation passed');
 
-    // Generate face embedding from faceImage if provided (NEW METHOD - more accurate)
-    let faceEmbedding = null;
-    if (faceImage) {
-      try {
-        console.log('🔄 Generating face embedding from image...');
-        faceEmbedding = await generateFaceEmbedding(faceImage);
-        if (faceEmbedding) {
-          console.log(`✅ Face embedding generated: ${faceEmbedding.length} dimensions`);
-        } else {
-          console.log('⚠️ No face detected in image - embedding generation failed');
-          return res.status(400).json({ 
-            message: 'لم يتم اكتشاف وجه في الصورة. يرجى المحاولة مرة أخرى.' 
-          });
-        }
-      } catch (error) {
-        console.error('❌ Error generating face embedding:', error);
+    // Face embedding is now generated on-device (React Native)
+    // Validate embedding if provided
+    let validatedEmbedding = null;
+    if (faceEmbedding) {
+      if (!Array.isArray(faceEmbedding) || faceEmbedding.length === 0) {
         return res.status(400).json({ 
-          message: 'فشل معالجة صورة الوجه. يرجى المحاولة مرة أخرى.' 
+          message: 'بيانات الوجه غير صحيحة. يرجى المحاولة مرة أخرى.' 
         });
       }
+      validatedEmbedding = faceEmbedding;
+      console.log(`✅ Face embedding received from device: ${validatedEmbedding.length} dimensions`);
+    } else {
+      console.log('⚠️ No face embedding provided - will use landmarks as fallback');
     }
 
     // Check if user exists
@@ -201,14 +194,14 @@ export const completeRegistration = async (req, res) => {
     
     // SECURITY CHECK 2: Check for duplicate face using EMBEDDING-BASED similarity (NEW - most accurate)
     // Priority: Use embeddings if available, fallback to landmarks
-    if (faceEmbedding) {
+    if (validatedEmbedding) {
       console.log('🔍 Checking for duplicate faces using embeddings...');
       const allUsersWithEmbeddings = await User.find({ 
         faceEmbedding: { $exists: true, $ne: null } 
       }).select('faceEmbedding _id email fullName fingerprintData');
       
       if (allUsersWithEmbeddings.length > 0) {
-        const match = findMatchingUser(faceEmbedding, allUsersWithEmbeddings, 0.6); // 0.6 threshold for registration
+        const match = findMatchingUser(validatedEmbedding, allUsersWithEmbeddings, 0.6); // 0.6 threshold for registration
         
         if (match) {
           console.log(`⚠️ Duplicate face detected using embeddings!`);
@@ -336,14 +329,14 @@ export const completeRegistration = async (req, res) => {
       fingerprintData: fingerprintPublicKey, // Store fingerprint ID (publicKey)
       faceImage: faceImage || null, // Face image is optional (privacy: no images stored)
       faceId: newFaceId, // Store face ID (hash) - kept for backward compatibility
-      faceEmbedding: faceEmbedding || null, // Store 128-D face embedding (NEW - most accurate)
+      faceEmbedding: validatedEmbedding || null, // Store face embedding (generated on-device)
       faceLandmarks: normalizedLandmarks || null, // Store normalized landmarks (DEPRECATED - kept for backward compatibility)
       faceIdEnabled: true,
       biometricType: biometricType || 'TouchID'
     };
     
-    if (faceEmbedding) {
-      console.log('✅ Saving face embedding to database (128-D vector)');
+    if (validatedEmbedding) {
+      console.log(`✅ Saving face embedding to database (${validatedEmbedding.length}-D vector)`);
     } else if (normalizedLandmarks) {
       console.log('✅ Saving normalized landmarks to database (fallback)');
     } else {
@@ -681,12 +674,13 @@ const verifyFaceSimilarity = (incomingLandmarks, storedLandmarks, context = 'log
 
 export const loginWithBiometric = async (req, res) => {
   try {
-    const { faceImage, fingerprintPublicKey, employeeNumber, email, faceLandmarks, faceId } = req.body;
+    const { faceImage, faceEmbedding, fingerprintPublicKey, employeeNumber, email, faceLandmarks, faceId } = req.body;
 
     console.log('🔍 Login request received:');
     console.log('  - fingerprintPublicKey:', !!fingerprintPublicKey, fingerprintPublicKey ? fingerprintPublicKey.substring(0, 20) + '...' : 'null');
     console.log('  - faceId:', !!faceId, faceId || 'null');
     console.log('  - faceImage:', !!faceImage);
+    console.log('  - faceEmbedding:', !!faceEmbedding, faceEmbedding ? `array[${faceEmbedding.length}]` : 'null');
     console.log('  - faceLandmarks type:', typeof faceLandmarks);
     console.log('  - faceLandmarks keys:', faceLandmarks && typeof faceLandmarks === 'object' ? Object.keys(faceLandmarks) : 'null');
     console.log('  - faceLandmarks.faceData:', faceLandmarks?.faceData ? (Array.isArray(faceLandmarks.faceData) ? `array[${faceLandmarks.faceData.length}]` : typeof faceLandmarks.faceData) : 'null');
@@ -696,6 +690,8 @@ export const loginWithBiometric = async (req, res) => {
 
     let user = null;
     const hasFingerprint = !!fingerprintPublicKey;
+    // Check if faceEmbedding is provided (NEW - generated on-device)
+    const hasFaceEmbedding = !!(faceEmbedding && Array.isArray(faceEmbedding) && faceEmbedding.length > 0);
     // Check if faceLandmarks is a valid object with face data
     // Frontend sends: { faceData: [...], faceFeatures: {...}, faceId: "..." }
     const hasValidFaceLandmarks = faceLandmarks && typeof faceLandmarks === 'object' && (
@@ -704,10 +700,11 @@ export const loginWithBiometric = async (req, res) => {
       faceLandmarks.landmarks ||
       (Array.isArray(faceLandmarks) && faceLandmarks.length > 0)
     );
-    const hasFace = !!(faceId || faceImage || hasValidFaceLandmarks);
+    const hasFace = !!(faceId || faceImage || faceEmbedding || hasValidFaceLandmarks);
     
     console.log('📊 Login method detection:');
     console.log('  - hasFingerprint:', hasFingerprint);
+    console.log('  - hasFaceEmbedding:', hasFaceEmbedding);
     console.log('  - hasValidFaceLandmarks:', hasValidFaceLandmarks);
     console.log('  - hasFaceId:', !!faceId);
     console.log('  - hasFaceImage:', !!faceImage);
@@ -792,26 +789,17 @@ export const loginWithBiometric = async (req, res) => {
         faceIdValue = generateFaceId(faceImage);
       }
       
-      if (!faceIdValue && !faceLandmarks && !faceImage) {
+      if (!faceIdValue && !faceLandmarks && !faceImage && !faceEmbedding) {
         return res.status(400).json({ 
-          message: 'يرجى إرسال faceId أو صورة الوجه أو faceLandmarks' 
+          message: 'يرجى إرسال faceId أو faceEmbedding أو صورة الوجه أو faceLandmarks' 
         });
       }
 
       // FACE LOGIN: Priority order - Embeddings (NEW) > Landmarks (FALLBACK)
-      // Priority 1: Use faceImage to generate embedding and compare (MOST ACCURATE)
-      if (faceImage) {
+      // Priority 1: Use faceEmbedding directly (generated on-device) - MOST ACCURATE
+      if (hasFaceEmbedding) {
         try {
-          console.log('🔄 Generating face embedding from login image...');
-          const loginEmbedding = await generateFaceEmbedding(faceImage);
-          
-          if (!loginEmbedding) {
-            return res.status(400).json({ 
-              message: 'لم يتم اكتشاف وجه في الصورة. يرجى المحاولة مرة أخرى.' 
-            });
-          }
-          
-          console.log('🔍 Searching for user by face embedding...');
+          console.log('🔍 Searching for user by face embedding (from device)...');
           const allUsers = await User.find({ 
             faceEmbedding: { $exists: true, $ne: null } 
           }).select('faceEmbedding _id email employeeNumber fullName faceIdEnabled fingerprintData');
@@ -819,7 +807,7 @@ export const loginWithBiometric = async (req, res) => {
           console.log(`📋 Found ${allUsers.length} users with faceEmbedding to compare`);
           
           // Find best match using embedding comparison (threshold: 0.6 for login)
-          const match = findMatchingUser(loginEmbedding, allUsers, 0.6);
+          const match = findMatchingUser(faceEmbedding, allUsers, 0.6);
           
           if (match) {
             user = match.user;
