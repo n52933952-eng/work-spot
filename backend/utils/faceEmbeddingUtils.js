@@ -5,8 +5,8 @@
 
 /**
  * Calculate cosine similarity between two embeddings
- * @param {Array<number>} embedding1 - First face embedding (128-D or 512-D array)
- * @param {Array<number>} embedding2 - Second face embedding (128-D or 512-D array)
+ * @param {Array<number>} embedding1 - First face embedding (192-D from TFLite, 128-D from landmarks, or other sizes)
+ * @param {Array<number>} embedding2 - Second face embedding (must match embedding1 length)
  * @returns {number} - Similarity score between 0 and 1 (1 = identical, 0 = completely different)
  */
 export const cosineSimilarity = (embedding1, embedding2) => {

@@ -68,7 +68,7 @@ const userSchema = new mongoose.Schema({
     default: null
   },
   faceEmbedding: {
-    type: [Number], // 128-D face embedding array from face-api
+    type: [Number], // Face embedding array (192-D from TFLite or 128-D from landmarks, generated on-device)
     default: null
   },
   faceLandmarks: {
