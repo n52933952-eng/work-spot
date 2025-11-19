@@ -838,8 +838,8 @@ export const loginWithBiometric = async (req, res) => {
           
           console.log(`📋 Found ${allUsers.length} users with faceEmbedding to compare`);
           
-          // Find best match using embedding comparison (threshold: 0.6 for login - more lenient than registration)
-          const match = findMatchingUser(faceEmbedding, allUsers, 0.6);
+          // Find best match using embedding comparison (threshold: 0.75 for login - increased for better security)
+          const match = findMatchingUser(faceEmbedding, allUsers, 0.75);
           
           const loginSearchTime = Date.now() - loginStartTime;
           console.log(`⏱️ Login embedding search completed in ${loginSearchTime}ms`);
