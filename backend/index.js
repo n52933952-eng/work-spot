@@ -69,9 +69,11 @@ server.listen(process.env.PORT || 5000, () => {
     console.log(`Server is running on port ${process.env.PORT || 5000}`)
 })
 
-// Serve React admin panel (if exists)
-app.use(express.static(path.join(__dirname, '/frontent/dist')))
+// __dirname = /opt/render/project/src/backend
+const FRONTEND_PATH = path.join(__dirname, '../frontent/dist');
 
-app.get('*',(req,res) => {
-    res.sendFile(path.join(__dirname, 'frontent', 'dist', 'index.html'))
-})
+app.use(express.static(FRONTEND_PATH));
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(FRONTEND_PATH, 'index.html'));
+});
