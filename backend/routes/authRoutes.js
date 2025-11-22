@@ -12,11 +12,12 @@ import {
   loginWithBiometric
 } from '../controllers/authController.js';
 import protectRoute from '../midlewar/protectRoute.js';
+import { uploadRegistrationImages } from '../middleware/upload.js';
 
 const router = express.Router();
 
 router.post('/register', register);
-router.post('/complete-registration', completeRegistration); // Complete registration with biometric data
+router.post('/complete-registration', uploadRegistrationImages, completeRegistration); // Complete registration with biometric data and images
 router.post('/login', login);
 router.post('/login/biometric', loginWithBiometric); // Login with face recognition
 // Protect logout so we know which user is logging out

@@ -56,11 +56,11 @@ const userSchema = new mongoose.Schema({
     default: false
   },
   profileImage: {
-    type: String, // Base64 encoded profile image or file path
+    type: String, // URL path to profile image (e.g., "/uploads/profiles/123_user_profileImage.jpg")
     default: null
   },
   faceImage: {
-    type: String, // Base64 encoded image or file path
+    type: String, // URL path to face image (e.g., "/uploads/faces/123_user_faceImage.jpg")
     default: null
   },
   faceId: {

@@ -2,6 +2,8 @@ import Attendance from '../modles/Attendance.js';
 import User from '../modles/User.js';
 import Leave from '../modles/Leave.js';
 import Holiday from '../modles/Holiday.js';
+import Location from '../modles/Location.js';
+import { calculateDistance } from '../utils/geofencing.js';
 
 // Get dashboard data for admin/manager
 export const getDashboard = async (req, res) => {
@@ -201,6 +203,237 @@ export const getAllEmployees = async (req, res) => {
     console.error('Get all employees error:', error);
     res.status(500).json({ 
       message: 'حدث خطأ',
+      error: error.message 
+    });
+  }
+};
+
+// Get today's attendance for dashboard (simplified format)
+export const getTodayAttendance = async (req, res) => {
+  try {
+    // Get date from query params, default to today
+    let startDate, endDate;
+    
+    if (req.query.date) {
+      // Single date provided
+      const selectedDate = new Date(req.query.date);
+      startDate = new Date(selectedDate);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(selectedDate);
+      endDate.setHours(23, 59, 59, 999);
+    } else if (req.query.startDate && req.query.endDate) {
+      // Date range provided
+      startDate = new Date(req.query.startDate);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(req.query.endDate);
+      endDate.setHours(23, 59, 59, 999);
+    } else {
+      // Default to today
+      startDate = new Date();
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date();
+      endDate.setHours(23, 59, 59, 999);
+    }
+
+    // Get attendances for the selected date/range
+    const todayAttendances = await Attendance.find({
+      date: { $gte: startDate, $lte: endDate }
+    }).populate('user', 'fullName employeeNumber department position profileImage');
+
+    // Get all active employees
+    const allEmployees = await User.find({ 
+      role: 'employee', 
+      isActive: true 
+    }).select('_id fullName employeeNumber');
+
+    // Calculate stats
+    const presentEmployees = []; // Still at work (checked in, not checked out)
+    const lateEmployees = [];
+    const checkedOutEmployees = []; // Checked out today
+    const checkedInUserIds = new Set();
+
+    todayAttendances.forEach(att => {
+      if (att.checkInTime && att.user) {
+        checkedInUserIds.add(att.user._id.toString());
+        
+        const location = att.checkInLocation 
+          ? att.checkInLocation.address || `${att.checkInLocation.latitude}, ${att.checkInLocation.longitude}`
+          : 'غير متوفر';
+
+        const checkInTimeFormatted = new Date(att.checkInTime).toLocaleTimeString('ar-JO', { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          hour12: true 
+        });
+
+        const employeeData = {
+          id: att.user._id,
+          employeeNumber: att.user.employeeNumber,
+          name: att.user.fullName,
+          checkInTime: checkInTimeFormatted,
+          location: location,
+          department: att.user.department,
+          position: att.user.position,
+          profileImage: att.user.profileImage
+        };
+
+        // Employee checked in - add to present/late based on status
+        // They should appear in check-in tabs even if they checked out
+        if (att.status === 'late') {
+          lateEmployees.push({
+            ...employeeData,
+            lateMinutes: att.lateMinutes || 0,
+            checkOutTime: att.checkOutTime ? new Date(att.checkOutTime).toLocaleTimeString('ar-JO', { 
+              hour: '2-digit', 
+              minute: '2-digit',
+              hour12: true 
+            }) : null
+          });
+        } else {
+          presentEmployees.push({
+            ...employeeData,
+            checkOutTime: att.checkOutTime ? new Date(att.checkOutTime).toLocaleTimeString('ar-JO', { 
+              hour: '2-digit', 
+              minute: '2-digit',
+              hour12: true 
+            }) : null
+          });
+        }
+
+        // If employee has checked out, ALSO add to checkedOutEmployees
+        if (att.checkOutTime) {
+          const checkOutTimeFormatted = new Date(att.checkOutTime).toLocaleTimeString('ar-JO', { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            hour12: true 
+          });
+          
+          const workingHours = att.workingHours || 0;
+          const hours = Math.floor(workingHours / 60);
+          const minutes = workingHours % 60;
+          const workingHoursFormatted = `${hours}:${minutes.toString().padStart(2, '0')}`;
+
+          checkedOutEmployees.push({
+            ...employeeData,
+            checkOutTime: checkOutTimeFormatted,
+            workingHours: workingHoursFormatted,
+            overtime: att.overtime > 0 ? Math.floor(att.overtime / 60) + ':' + (att.overtime % 60).toString().padStart(2, '0') : '0:00'
+          });
+        }
+      }
+    });
+
+    // Calculate absent employees
+    const absentEmployees = allEmployees
+      .filter(emp => !checkedInUserIds.has(emp._id.toString()))
+      .map(emp => {
+        const expectedCheckIn = emp.expectedCheckInTime || '09:00';
+        return {
+          id: emp._id,
+          employeeNumber: emp.employeeNumber,
+          name: emp.fullName,
+          expectedTime: `${expectedCheckIn} صباحاً`, // Expected check-in time
+          expectedCheckOut: '05:00 مساءً' // Expected check-out time (5 PM)
+        };
+      });
+
+    // Stats
+    const stats = {
+      present: presentEmployees.length,
+      late: lateEmployees.length,
+      checkedOut: checkedOutEmployees.length,
+      absent: absentEmployees.length,
+      total: allEmployees.length
+    };
+
+    // Get headquarters location (main location)
+    const headquarters = await Location.findOne({
+      type: 'main',
+      isActive: true
+    });
+
+    // If no headquarters in DB, use default coordinates (University of Jordan)
+    const headquartersLocation = headquarters || {
+      latitude: 32.014206,
+      longitude: 35.873015,
+      name: 'المقر الرئيسي',
+      nameAr: 'المقر الرئيسي - الجامعة الأردنية',
+      address: 'University of Jordan, Queen Rania St., Amman, Jordan'
+    };
+
+    // Prepare map data with check-in locations and distances from headquarters
+    const mapData = {
+      headquarters: {
+        latitude: headquartersLocation.latitude,
+        longitude: headquartersLocation.longitude,
+        name: headquartersLocation.nameAr || headquartersLocation.name,
+        address: headquartersLocation.address
+      },
+      checkIns: []
+    };
+
+    // Collect all check-in locations with employee info and distances
+    const checkInMap = new Map();
+    todayAttendances.forEach(att => {
+      if (att.checkInLocation && att.checkInLocation.latitude && att.checkInLocation.longitude) {
+        const key = `${att.checkInLocation.latitude},${att.checkInLocation.longitude}`;
+        
+        if (!checkInMap.has(key)) {
+          const distance = calculateDistance(
+            headquartersLocation.latitude,
+            headquartersLocation.longitude,
+            att.checkInLocation.latitude,
+            att.checkInLocation.longitude
+          );
+          
+          checkInMap.set(key, {
+            latitude: att.checkInLocation.latitude,
+            longitude: att.checkInLocation.longitude,
+            address: att.checkInLocation.address || 'غير متوفر',
+            distance: Math.round(distance), // Distance in meters
+            employees: []
+          });
+        }
+        
+        const location = checkInMap.get(key);
+        location.employees.push({
+          id: att.user._id,
+          name: att.user.fullName,
+          employeeNumber: att.user.employeeNumber,
+          checkInTime: new Date(att.checkInTime).toLocaleTimeString('ar-JO', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          }),
+          checkOutTime: att.checkOutTime ? new Date(att.checkOutTime).toLocaleTimeString('ar-JO', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          }) : null
+        });
+      }
+    });
+
+    mapData.checkIns = Array.from(checkInMap.values());
+
+    res.status(200).json({
+      stats,
+      employees: {
+        present: presentEmployees,
+        late: lateEmployees,
+        checkedOut: checkedOutEmployees,
+        absent: absentEmployees
+      },
+      dateRange: {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString()
+      },
+      mapData
+    });
+  } catch (error) {
+    console.error('Get today attendance error:', error);
+    res.status(500).json({ 
+      message: 'حدث خطأ في جلب بيانات الحضور',
       error: error.message 
     });
   }

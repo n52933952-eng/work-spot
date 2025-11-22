@@ -1,6 +1,7 @@
 import Leave from '../modles/Leave.js';
 import Attendance from '../modles/Attendance.js';
 import User from '../modles/User.js';
+import { io, getRecipientSockedId } from '../socket/socket.js'; // Import Socket.io
 
 // Calculate days between two dates (excluding weekends)
 const calculateWorkingDays = (startDate, endDate) => {
@@ -75,9 +76,15 @@ export const createLeave = async (req, res) => {
       }
     );
 
+    const populatedLeave = await Leave.findById(leave._id).populate('user', 'fullName employeeNumber email profileImage');
+
+    // Emit Socket.io event to notify admins of new leave request
+    io.emit('leaveCreated', populatedLeave);
+    console.log(`📬 [Socket.io] New leave request created by user: ${userId}`);
+
     res.status(201).json({
       message: 'تم إنشاء طلب الإجازة بنجاح',
-      leave: await Leave.findById(leave._id).populate('user', 'fullName employeeNumber email')
+      leave: populatedLeave
     });
   } catch (error) {
     console.error('Create leave error:', error);
@@ -139,7 +146,7 @@ export const getAllLeaves = async (req, res) => {
     }
 
     const leaves = await Leave.find(query)
-      .populate('user', 'fullName employeeNumber email department')
+      .populate('user', 'fullName employeeNumber email department profileImage')
       .populate('reviewedBy', 'fullName employeeNumber')
       .sort({ createdAt: -1 });
 
@@ -229,11 +236,56 @@ export const reviewLeave = async (req, res) => {
       );
     }
 
+    const populatedLeave = await Leave.findById(leave._id)
+      .populate('user', 'fullName employeeNumber email profileImage')
+      .populate('reviewedBy', 'fullName employeeNumber');
+
+    // Emit Socket.io event for real-time updates - ONLY to specific user
+    const userId = typeof leave.user === 'object' ? leave.user._id : leave.user;
+    const userIdString = userId.toString();
+    
+    // Verify user ID is valid
+    if (!userIdString || userIdString === 'undefined') {
+      console.error('❌ [Socket.io] Invalid userId for leave notification:', userIdString);
+    } else {
+      if (status === 'approved') {
+        // Emit ONLY to this specific user's room
+        io.to(userIdString).emit('leaveApproved', populatedLeave);
+        console.log(`✅ [Socket.io] Leave approved notification sent ONLY to user: ${userIdString} (room: ${userIdString})`);
+        
+        // Fallback: emit directly to socket ID if room method doesn't work
+        const socketId = getRecipientSockedId(userIdString);
+        if (socketId) {
+          io.to(socketId).emit('leaveApproved', populatedLeave);
+          console.log(`✅ [Socket.io] Leave approved also sent to socket ID: ${socketId} (fallback)`);
+        }
+      } else {
+        // Emit ONLY to this specific user's room
+        io.to(userIdString).emit('leaveRejected', {
+          leave: populatedLeave,
+          rejectionReason: rejectionReason
+        });
+        console.log(`❌ [Socket.io] Leave rejected notification sent ONLY to user: ${userIdString} (room: ${userIdString})`);
+        
+        // Fallback: emit directly to socket ID if room method doesn't work
+        const socketId = getRecipientSockedId(userIdString);
+        if (socketId) {
+          io.to(socketId).emit('leaveRejected', {
+            leave: populatedLeave,
+            rejectionReason: rejectionReason
+          });
+          console.log(`❌ [Socket.io] Leave rejected also sent to socket ID: ${socketId} (fallback)`);
+        }
+      }
+    }
+
+    // Also emit to all admins for real-time admin panel update
+    io.emit('leaveReviewed', populatedLeave);
+    console.log(`📢 [Socket.io] Leave review broadcast to all admins`);
+
     res.status(200).json({
       message: status === 'approved' ? 'تم قبول طلب الإجازة' : 'تم رفض طلب الإجازة',
-      leave: await Leave.findById(leave._id)
-        .populate('user', 'fullName employeeNumber email')
-        .populate('reviewedBy', 'fullName employeeNumber')
+      leave: populatedLeave
     });
   } catch (error) {
     console.error('Review leave error:', error);

@@ -1,5 +1,6 @@
 import Announcement from '../modles/Announcement.js';
 import User from '../modles/User.js';
+import { io } from '../socket/socket.js';
 
 // Create announcement
 export const createAnnouncement = async (req, res) => {
@@ -17,6 +18,18 @@ export const createAnnouncement = async (req, res) => {
       return res.status(403).json({ message: 'غير مصرح لك' });
     }
 
+    const normalizedSpecificUsers = Array.isArray(specificUsers)
+      ? specificUsers.filter(Boolean)
+      : specificUsers
+      ? [specificUsers]
+      : [];
+
+    if (targetAudience === 'specific' && normalizedSpecificUsers.length === 0) {
+      return res.status(400).json({
+        message: 'الرجاء اختيار المستخدمين المستهدفين',
+      });
+    }
+
     const announcement = await Announcement.create({
       title,
       content,
@@ -24,17 +37,35 @@ export const createAnnouncement = async (req, res) => {
       targetAudience: targetAudience || 'all',
       departments: departments || [],
       roles: roles || [],
-      specificUsers: specificUsers || [],
+      specificUsers: targetAudience === 'specific' ? normalizedSpecificUsers : [],
       expiresAt: expiresAt ? new Date(expiresAt) : null,
       attachments: attachments || [],
       createdBy: req.user._id
     });
 
+    const populatedAnnouncement = await Announcement.findById(announcement._id)
+      .populate('createdBy', 'fullName employeeNumber')
+      .populate('specificUsers', 'fullName employeeNumber');
+
+    if (io && populatedAnnouncement) {
+      const targetUsers = [];
+
+      if (populatedAnnouncement.targetAudience === 'specific' && populatedAnnouncement.specificUsers?.length) {
+        populatedAnnouncement.specificUsers.forEach(user => {
+          const userId = typeof user === 'string' ? user : user?._id?.toString();
+          if (userId) {
+            targetUsers.push(userId);
+            io.to(userId).emit('announcementCreated', populatedAnnouncement);
+          }
+        });
+      } else {
+        io.emit('announcementCreated', populatedAnnouncement);
+      }
+    }
+
     res.status(201).json({
       message: 'تم إنشاء الإعلان بنجاح',
-      announcement: await Announcement.findById(announcement._id)
-        .populate('createdBy', 'fullName employeeNumber')
-        .populate('specificUsers', 'fullName employeeNumber')
+      announcement: populatedAnnouncement
     });
   } catch (error) {
     console.error('Create announcement error:', error);
@@ -52,33 +83,39 @@ export const getMyAnnouncements = async (req, res) => {
     const userId = req.user._id;
     const user = await User.findById(userId);
 
+    const expirationFilter = {
+      $or: [
+        { expiresAt: null },
+        { expiresAt: { $gte: new Date() } },
+      ],
+    };
+
+    const audienceConditions = [
+      { targetAudience: 'all' },
+      { specificUsers: userId },
+    ];
+
+    if (user?.department) {
+      audienceConditions.push({ departments: user.department });
+    }
+
+    if (user?.role) {
+      audienceConditions.push({ roles: user.role });
+    }
+
     const query = {
       isActive: isActive !== 'false',
-      $or: []
+      $and: [
+        expirationFilter,
+        { $or: audienceConditions },
+      ],
     };
 
-    if (type) query.type = type;
+    if (type) {
+      query.type = type;
+    }
 
-    // Check expiration
-    query.$or.push(
-      { expiresAt: null },
-      { expiresAt: { $gte: new Date() } }
-    );
-
-    // Target audience filter
-    const audienceQuery = {
-      $or: [
-        { targetAudience: 'all' },
-        { specificUsers: userId },
-        { departments: user.department },
-        { roles: user.role }
-      ]
-    };
-
-    const announcements = await Announcement.find({
-      ...query,
-      ...audienceQuery
-    })
+    const announcements = await Announcement.find(query)
       .populate('createdBy', 'fullName employeeNumber')
       .populate('specificUsers', 'fullName employeeNumber')
       .sort({ createdAt: -1 });

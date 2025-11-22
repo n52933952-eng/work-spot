@@ -4,8 +4,14 @@ import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import path from 'path'
+import { fileURLToPath } from 'url'
+import { dirname } from 'path'
 import {app,server} from './socket/socket.js'
 dotenv.config()
+
+// Define __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
 // Routes
 import authRoutes from './routes/authRoutes.js'
@@ -22,10 +28,12 @@ import dashboardRoutes from './routes/dashboardRoutes.js'
 app.use(express.json({ limit: '50mb' }))
 app.use(express.urlencoded({ limit: '50mb', extended: true }))
 app.use(cookieParser())
-app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
-  credentials: true
-}))
+
+// Serve static files from public folder (for uploaded images)
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')))
+console.log('📁 Serving static files from:', path.join(__dirname, 'public/uploads'))
+
+app.use(cors({origin:"https://work-spot-6.onrender.com",credentials:true}))
 
 // API Routes
 app.use('/api/auth', authRoutes)
@@ -57,14 +65,11 @@ import('./utils/scheduler.js').then(module => {
 // Face recognition is now done on-device (React Native)
 // Backend only stores and compares embeddings
 
-
-const __dirname = path.resolve()
-
 server.listen(process.env.PORT || 5000, () => {
     console.log(`Server is running on port ${process.env.PORT || 5000}`)
 })
 
-
+// Serve React admin panel (if exists)
 app.use(express.static(path.join(__dirname, '/frontent/dist')))
 
 app.get('*',(req,res) => {

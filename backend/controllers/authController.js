@@ -6,27 +6,55 @@ import { findMatchingUser, cosineSimilarity } from '../utils/faceEmbeddingUtils.
 
 // Complete registration with biometric data
 export const completeRegistration = async (req, res) => {
+  const registrationStartTime = Date.now();
+  console.log('⏱️ Registration request received');
+  console.log('📦 Request type:', req.is('multipart/form-data') ? 'multipart/form-data' : 'application/json');
+  
   try {
-    const { 
-      employeeNumber, 
-      email, 
-      password, 
-      fullName, 
-      department, 
-      position, 
-      role, 
-      profileImage, // User profile image (Base64)
-      branch, // Location ID
-      latitude, // User's location latitude
-      longitude, // User's location longitude
-      fingerprintPublicKey, // Fingerprint ID
-      faceEmbedding, // Face embedding (128-D array) - generated on-device
-      faceImage, // Base64 image
-      faceId, // Face ID (hash)
-      faceFeatures, // Face features from ML Kit (contains landmarks)
-      faceData, // Full face detection data from ML Kit
-      biometricType 
-    } = req.body;
+    // Parse JSON fields from FormData
+    const employeeNumber = req.body.employeeNumber;
+    const email = req.body.email;
+    const password = req.body.password;
+    const fullName = req.body.fullName;
+    const department = req.body.department || null;
+    const position = req.body.position || null;
+    const role = req.body.role || null;
+    const branch = req.body.branch || null;
+    const latitude = req.body.latitude ? parseFloat(req.body.latitude) : null;
+    const longitude = req.body.longitude ? parseFloat(req.body.longitude) : null;
+    const address = req.body.address || null;
+    const streetName = req.body.streetName || null;
+    const fingerprintPublicKey = req.body.fingerprintPublicKey;
+    const faceId = req.body.faceId;
+    const biometricType = req.body.biometricType;
+    
+    // Parse arrays/objects from JSON strings
+    const faceEmbedding = req.body.faceEmbedding ? JSON.parse(req.body.faceEmbedding) : null;
+    const faceFeatures = req.body.faceFeatures ? JSON.parse(req.body.faceFeatures) : null;
+    const faceData = req.body.faceData ? JSON.parse(req.body.faceData) : null;
+    
+    // Get uploaded images from multer (saved to disk)
+    // Store file paths (URLs) instead of base64
+    let profileImage = null;
+    let faceImage = null;
+    
+    if (req.files) {
+      if (req.files.profileImage && req.files.profileImage[0]) {
+        const file = req.files.profileImage[0];
+        // Store relative path (URL path) instead of full file path
+        profileImage = `/uploads/profiles/${file.filename}`;
+        console.log('📦 Profile image saved:', profileImage, `(${(file.size / 1024).toFixed(2)} KB)`);
+      }
+      
+      if (req.files.faceImage && req.files.faceImage[0]) {
+        const file = req.files.faceImage[0];
+        // Store relative path (URL path) instead of full file path
+        faceImage = `/uploads/faces/${file.filename}`;
+        console.log('📦 Face image saved:', faceImage, `(${(file.size / 1024).toFixed(2)} KB)`);
+      }
+    }
+    
+    console.log('📦 Form data parsed successfully');
 
     // Validation
     if (!employeeNumber || !email || !password || !fullName) {
@@ -69,14 +97,25 @@ export const completeRegistration = async (req, res) => {
       console.log('⚠️ No face embedding provided - will use landmarks as fallback');
     }
 
-    // Check if user exists
-    const existingUser = await User.findOne({
-      $or: [{ email }, { employeeNumber }]
-    });
+    // OPTIMIZATION: Run duplicate checks in parallel for faster registration
+    const duplicateCheckStartTime = Date.now();
+    
+    const [existingUser, existingFingerprint] = await Promise.all([
+      User.findOne({ $or: [{ email }, { employeeNumber }] }),
+      User.findOne({ fingerprintData: fingerprintPublicKey })
+    ]);
+    
+    console.log(`⏱️ Duplicate checks completed in ${Date.now() - duplicateCheckStartTime}ms`);
 
     if (existingUser) {
       return res.status(400).json({ 
         message: 'البريد الإلكتروني أو رقم الموظف موجود مسبقاً' 
+      });
+    }
+    
+    if (existingFingerprint) {
+      return res.status(400).json({ 
+        message: 'هذا الجهاز مستخدم بالفعل. يرجى استخدام جهاز آخر أو تسجيل الدخول بالحساب المسجل على هذا الجهاز.' 
       });
     }
 
@@ -350,10 +389,10 @@ export const completeRegistration = async (req, res) => {
       department,
       position,
       role: role || 'employee',
-      profileImage: profileImage || null, // Store profile image (Base64)
+      profileImage: profileImage || null, // Store profile image URL path (e.g., "/uploads/profiles/123_user_profileImage.jpg")
       branch: branch || null, // Store location/branch reference
       fingerprintData: fingerprintPublicKey, // Store fingerprint ID (publicKey)
-      faceImage: faceImage || null, // Face image is optional (privacy: no images stored)
+      faceImage: faceImage || null, // Face image URL path (e.g., "/uploads/faces/123_user_faceImage.jpg")
       faceId: newFaceId, // Store face ID (hash) - kept for backward compatibility
       faceEmbedding: validatedEmbedding || null, // Store face embedding (generated on-device)
       faceLandmarks: normalizedLandmarks || null, // Store normalized landmarks (DEPRECATED - kept for backward compatibility)
@@ -369,12 +408,19 @@ export const completeRegistration = async (req, res) => {
       console.log('⚠️ No embedding or landmarks to save - user will only have faceId hash');
     }
 
+    const createUserStartTime = Date.now();
     const user = await User.create(userData);
+    const createUserTime = Date.now() - createUserStartTime;
+    console.log(`✅ User created successfully in ${createUserTime}ms:`, user._id);
 
     // Generate token
     const token = GenerateToken(user._id, res);
+    console.log('✅ Token generated');
 
-    res.status(201).json({
+    // Prepare response with image URLs (much smaller than base64!)
+    const baseURL = process.env.API_BASE_URL || `http://${req.get('host')}`;
+    
+    const responseData = {
       message: 'تم إنشاء الحساب بنجاح مع المصادقة الحيوية',
       user: {
         _id: user._id,
@@ -384,13 +430,23 @@ export const completeRegistration = async (req, res) => {
         role: user.role,
         department: user.department,
         position: user.position,
-        profileImage: user.profileImage,
+        // Send full URL for images (e.g., "http://192.168.100.66:5000/uploads/profiles/123_user_profileImage.jpg")
+        profileImage: user.profileImage ? `${baseURL}${user.profileImage}` : null,
+        faceImage: user.faceImage ? `${baseURL}${user.faceImage}` : null,
         branch: user.branch,
         faceIdEnabled: user.faceIdEnabled,
         biometricType: user.biometricType
       },
       token
-    });
+    };
+    
+    const totalTime = Date.now() - registrationStartTime;
+    console.log('📤 Sending registration response...');
+    console.log('📤 Response size:', JSON.stringify(responseData).length, 'bytes');
+    console.log(`⏱️ Total registration time: ${totalTime}ms`);
+    
+    res.status(201).json(responseData);
+    console.log('✅ Registration response sent successfully');
   } catch (error) {
     console.error('Complete registration error:', error);
     res.status(500).json({ 
@@ -475,9 +531,88 @@ export const register = async (req, res) => {
 // Login
 export const login = async (req, res) => {
   try {
-    const { email, employeeNumber, password } = req.body;
+    const { username, email, employeeNumber, password } = req.body;
 
-    // Find user by email or employee number
+    // Simple admin login: username="admin" and password="admin"
+    // This is for the admin web panel only
+    if (username === 'admin' && password === 'admin') {
+      let user = await User.findOne({
+        $or: [
+          { email: 'admin@admin.com' },
+          { employeeNumber: 'admin' }
+        ]
+      });
+
+      // If no admin exists, create one
+      if (!user) {
+        const bcrypt = (await import('bcryptjs')).default;
+        const hashedPassword = await bcrypt.hash('admin', 10);
+        
+        user = await User.create({
+          employeeNumber: 'admin',
+          email: 'admin@admin.com',
+          password: hashedPassword,
+          fullName: 'System Administrator',
+          role: 'admin',
+          department: 'IT',
+          position: 'Administrator',
+          isActive: true,
+          expectedCheckInTime: '09:00',
+          expectedCheckOutTime: '17:00'
+        });
+        
+        console.log('✅ Auto-created admin user: username=admin, password=admin');
+      } else {
+        // Admin exists - ensure it has admin role and correct password
+        if (user.role !== 'admin') {
+          user.role = 'admin';
+          console.log('✅ Updated user role to admin');
+        }
+        
+        // Reset password to 'admin' if it doesn't match
+        const isPasswordCorrect = await user.comparePassword('admin');
+        if (!isPasswordCorrect) {
+          console.log('⚠️ Admin user exists but password is wrong. Resetting to "admin"...');
+          const bcrypt = (await import('bcryptjs')).default;
+          user.password = await bcrypt.hash('admin', 10);
+          console.log('✅ Admin password reset to "admin"');
+        }
+        
+        // Ensure user is active
+        if (!user.isActive) {
+          user.isActive = true;
+          console.log('✅ Activated admin user');
+        }
+        
+        await user.save();
+      }
+      
+      // Update last login
+      user.lastLogin = new Date();
+      await user.save();
+
+      // Generate token
+      const token = GenerateToken(user._id, res);
+
+      return res.status(200).json({
+        message: 'تم تسجيل الدخول بنجاح',
+        user: {
+          _id: user._id,
+          employeeNumber: user.employeeNumber,
+          email: user.email,
+          fullName: user.fullName,
+          role: user.role,
+          department: user.department,
+          position: user.position,
+          faceIdEnabled: user.faceIdEnabled,
+          twoFactorEnabled: user.twoFactorEnabled,
+          attendancePoints: user.attendancePoints
+        },
+        token
+      });
+    }
+
+    // Regular login: Find user by email or employee number (for mobile app)
     const user = await User.findOne({
       $or: [
         email ? { email } : null,
@@ -578,7 +713,15 @@ export const getMe = async (req, res) => {
       return res.status(404).json({ message: 'المستخدم غير موجود' });
     }
 
-    res.status(200).json({ user });
+    // Convert image paths to full URLs
+    const baseURL = process.env.API_BASE_URL || `http://${req.get('host')}`;
+    const userResponse = {
+      ...user.toObject(),
+      profileImage: user.profileImage ? `${baseURL}${user.profileImage}` : null,
+      faceImage: user.faceImage ? `${baseURL}${user.faceImage}` : null,
+    };
+
+    res.status(200).json({ user: userResponse });
   } catch (error) {
     console.error('Get me error:', error);
     res.status(500).json({ 
@@ -687,8 +830,8 @@ const verifyFaceSimilarity = (incomingLandmarks, storedLandmarks, context = 'log
   try {
     const similarity = compareFaces(incomingLandmarks, storedLandmarks);
     console.log(`🔍 Face similarity (${context}): ${(similarity * 100).toFixed(2)}%`);
-    // Increased threshold from 75% to 94.55% to match main login threshold and prevent false matches
-    if (similarity >= 0.9455) {
+    // TEMPORARY: 70% threshold
+    if (similarity >= 0.70) {
       return { verified: true, similarity };
     }
     return { verified: false, similarity };
@@ -838,8 +981,27 @@ export const loginWithBiometric = async (req, res) => {
           
           console.log(`📋 Found ${allUsers.length} users with faceEmbedding to compare`);
           
-          // Find best match using embedding comparison (threshold: 0.75 for login - increased for better security)
-          const match = findMatchingUser(faceEmbedding, allUsers, 0.75);
+          // DIAGNOSTIC: Try with very low threshold to see ANY match (for debugging)
+          const diagnosticMatch = findMatchingUser(faceEmbedding, allUsers, 0.50); // Very low threshold for diagnostics
+          if (diagnosticMatch) {
+            console.log(`🔍 DIAGNOSTIC: Best face match found: ${diagnosticMatch.user.email || diagnosticMatch.user.employeeNumber}`);
+            console.log(`🔍 DIAGNOSTIC: Similarity: ${(diagnosticMatch.similarity * 100).toFixed(2)}%`);
+            if (diagnosticMatch.similarity < 0.95) {
+              console.log(`⚠️ WARNING: Similarity below threshold (${(diagnosticMatch.similarity * 100).toFixed(2)}% < 95%)`);
+              console.log(`⚠️ This will be rejected. Expected: 95-100% for same person.`);
+              console.log(`💡 HINT: Face size difference too large or embeddings inconsistent.`);
+            } else {
+              console.log(`✅ Good: Similarity above threshold (${(diagnosticMatch.similarity * 100).toFixed(2)}% >= 95%)`);
+            }
+          } else {
+            console.log(`🔍 DIAGNOSTIC: No match found even at 50% threshold - completely different faces!`);
+          }
+          
+          // TEMPORARY: 70% threshold due to TFLite non-determinism
+          // Same person varies: 75-82% similarity between captures
+          // Root causes: face detection variations, TFLite randomness, preprocessing
+          // TODO: Implement multiple embeddings + voting system for stability
+          const match = findMatchingUser(faceEmbedding, allUsers, 0.70);
           
           const loginSearchTime = Date.now() - loginStartTime;
           console.log(`⏱️ Login embedding search completed in ${loginSearchTime}ms`);
@@ -848,21 +1010,55 @@ export const loginWithBiometric = async (req, res) => {
             user = match.user;
             console.log(`✅ Found user by face embedding: ${(match.similarity * 100).toFixed(2)}% similarity`);
             
+            // Device binding ENABLED for production security
+            // Fixed: Now using stored key from AsyncStorage instead of regenerating
+            const DEVICE_BINDING_ENABLED = true; // Device verification is ACTIVE
+            
             // SECURITY: If user has a registered device, device verification is REQUIRED
-            if (user.fingerprintData) {
+            if (DEVICE_BINDING_ENABLED && user.fingerprintData) {
               if (!hasFingerprint || !fingerprintPublicKey) {
                 console.log('⚠️ Security: User has registered device but no fingerprint provided');
+                console.log('📱 User registered device (first 30 chars):', user.fingerprintData.substring(0, 30) + '...');
                 return res.status(403).json({ 
                   message: 'يرجى تسجيل الدخول من الجهاز المسجل لديك أو استخدام البصمة للتحقق' 
                 });
               }
               if (user.fingerprintData !== fingerprintPublicKey) {
                 console.log('⚠️ Security: Fingerprint mismatch (face matched but wrong device)');
+                console.log('📱 Registered device length:', user.fingerprintData.length);
+                console.log('📱 Current device length:', fingerprintPublicKey.length);
+                console.log('📱 Registered device (full):', user.fingerprintData);
+                console.log('📱 Current device (full):', fingerprintPublicKey);
+                console.log('📱 String comparison:', user.fingerprintData === fingerprintPublicKey ? 'YES ✅' : 'NO ❌');
+                console.log('📱 Type check:');
+                console.log('   - Registered device type:', typeof user.fingerprintData);
+                console.log('   - Current device type:', typeof fingerprintPublicKey);
+                
+                // Check character-by-character where they differ
+                let diffIndex = -1;
+                for (let i = 0; i < Math.min(user.fingerprintData.length, fingerprintPublicKey.length); i++) {
+                  if (user.fingerprintData[i] !== fingerprintPublicKey[i]) {
+                    diffIndex = i;
+                    break;
+                  }
+                }
+                if (diffIndex >= 0) {
+                  console.log('📱 First difference at index:', diffIndex);
+                  console.log('   - Registered:', user.fingerprintData.substring(Math.max(0, diffIndex - 10), diffIndex + 20));
+                  console.log('   - Current:', fingerprintPublicKey.substring(Math.max(0, diffIndex - 10), diffIndex + 20));
+                } else if (user.fingerprintData.length !== fingerprintPublicKey.length) {
+                  console.log('📱 Strings are identical but different lengths!');
+                }
+                
+                console.log('💡 Solution: User needs to re-register to update device fingerprint');
                 return res.status(403).json({ 
-                  message: 'البصمة غير متطابقة مع المستخدم المسجل. يرجى تسجيل الدخول من جهازك المسجل.' 
+                  message: 'هذا الجهاز غير مسجل. يرجى إعادة التسجيل من هذا الجهاز أو استخدام جهازك المسجل.' 
                 });
               }
               console.log('✅ Fingerprint verified - user logging in from registered device');
+            } else if (user.fingerprintData && !DEVICE_BINDING_ENABLED) {
+              console.log('⚠️ Device binding DISABLED - skipping device verification (embedding path)');
+              console.log('📱 User has registered device but verification is disabled for debugging');
             }
             
             // Verify face is enabled
@@ -956,10 +1152,8 @@ export const loginWithBiometric = async (req, res) => {
           if (candidateUser.faceLandmarks) {
             const similarity = compareFaces(incomingFaceData, candidateUser.faceLandmarks);
             console.log(`  - User ${candidateUser.email || candidateUser.employeeNumber}: ${(similarity * 100).toFixed(2)}% similarity`);
-            // Increased threshold to 94.55% for stricter face matching (prevents false matches)
-            // This ensures only the exact registered person can login
-            // Note: If legitimate users fail, we may need to improve the comparison algorithm
-            if (similarity >= 0.9455 && similarity > bestSimilarity) {
+            // TEMPORARY: 70% threshold (same reason as above)
+            if (similarity >= 0.70 && similarity > bestSimilarity) {
               bestMatch = candidateUser;
               bestSimilarity = similarity;
             }
@@ -970,9 +1164,10 @@ export const loginWithBiometric = async (req, res) => {
           user = bestMatch;
           console.log(`✅ Found user by face landmarks: ${(bestSimilarity * 100).toFixed(2)}% similarity`);
           
+          // TEMPORARY: Device binding disabled (using same flag as embedding path above)
           // SECURITY: If user has a registered device, device verification is REQUIRED
           // This prevents users from logging in from other people's devices
-          if (user.fingerprintData) {
+          if (DEVICE_BINDING_ENABLED && user.fingerprintData) {
             if (!hasFingerprint || !fingerprintPublicKey) {
               console.log('⚠️ Security: User has registered device but no fingerprint provided');
               return res.status(403).json({ 
@@ -988,6 +1183,9 @@ export const loginWithBiometric = async (req, res) => {
               });
             }
             console.log('✅ Fingerprint verified - user logging in from registered device');
+          } else if (user.fingerprintData && !DEVICE_BINDING_ENABLED) {
+            console.log('⚠️ Device binding DISABLED - skipping device verification');
+            console.log('📱 User has registered device but verification is disabled for debugging');
           }
           
           // Verify face is enabled

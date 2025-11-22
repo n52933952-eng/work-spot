@@ -4,8 +4,16 @@
  * @param {String} expectedTime - Expected check-in time (HH:mm format)
  * @returns {number} Late minutes (0 if on time or early)
  */
+const JORDAN_TIMEZONE = 'Asia/Amman';
+
+const convertToTimezone = (date, timeZone = JORDAN_TIMEZONE) => {
+  if (!date) return null;
+  return new Date(new Date(date).toLocaleString('en-US', { timeZone }));
+};
+
 export const calculateLateMinutes = (checkInTime, expectedTime) => {
-  const checkIn = new Date(checkInTime);
+  const checkIn = convertToTimezone(checkInTime);
+  if (!checkIn || !expectedTime) return 0;
   const [hours, minutes] = expectedTime.split(':').map(Number);
   
   // Set expected time for the same date
@@ -26,8 +34,9 @@ export const calculateLateMinutes = (checkInTime, expectedTime) => {
  */
 export const calculateWorkingHours = (checkInTime, checkOutTime) => {
   if (!checkInTime || !checkOutTime) return 0;
-  
-  const diffMs = new Date(checkOutTime) - new Date(checkInTime);
+  const checkIn = convertToTimezone(checkInTime);
+  const checkOut = convertToTimezone(checkOutTime);
+  const diffMs = checkOut - checkIn;
   return Math.floor(diffMs / (1000 * 60)); // Convert to minutes
 };
 
@@ -38,9 +47,43 @@ export const calculateWorkingHours = (checkInTime, checkOutTime) => {
  * @returns {number} Overtime in minutes (0 if no overtime)
  */
 export const calculateOvertime = (workingMinutes, expectedMinutes = 480) => {
-  // Default expected: 8 hours = 480 minutes
+  // Default expected: 8 hours = 480 minutes (9 AM to 5 PM)
   const overtime = workingMinutes - expectedMinutes;
   return overtime > 0 ? overtime : 0;
+};
+
+/**
+ * Get standard working hours configuration for Jordan
+ * @returns {Object} Working hours config
+ */
+export const getWorkingHoursConfig = () => {
+  return {
+    startTime: '09:00', // 9 AM
+    endTime: '17:00',   // 5 PM
+    durationMinutes: 480, // 8 hours
+    timezone: 'Asia/Amman' // Jordan timezone
+  };
+};
+
+/**
+ * Get expected check-out time based on check-in time
+ * @param {Date} checkInTime - Check-in time
+ * @param {String} expectedCheckInTime - Expected check-in time (default: '09:00')
+ * @returns {Date} Expected check-out time (8 hours after expected check-in)
+ */
+export const getExpectedCheckOutTime = (checkInTime, expectedCheckInTime = '09:00') => {
+  const checkIn = convertToTimezone(checkInTime);
+  const [hours, minutes] = expectedCheckInTime.split(':').map(Number);
+  
+  // Set expected check-in time for the same date
+  const expectedCheckIn = new Date(checkIn);
+  expectedCheckIn.setHours(hours, minutes, 0, 0);
+  
+  // Expected check-out is 8 hours after expected check-in (9 AM to 5 PM)
+  const expectedCheckOut = new Date(expectedCheckIn);
+  expectedCheckOut.setHours(expectedCheckOut.getHours() + 8);
+  
+  return expectedCheckOut;
 };
 
 /**

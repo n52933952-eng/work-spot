@@ -63,6 +63,7 @@ export const findMatchingUser = (embedding, users, threshold = 0.6) => {
 
   let bestMatch = null;
   let bestSimilarity = 0;
+  let allSimilarities = []; // Track ALL similarities for debugging
   const VERY_HIGH_MATCH = 0.98; // Early exit if we find a 98%+ match (very confident)
 
   for (const user of users) {
@@ -71,6 +72,12 @@ export const findMatchingUser = (embedding, users, threshold = 0.6) => {
     }
 
     const similarity = cosineSimilarity(embedding, user.faceEmbedding);
+    
+    // ALWAYS track similarity for debugging (even if below threshold)
+    allSimilarities.push({
+      user: user.email || user.employeeNumber || user._id,
+      similarity: similarity
+    });
     
     if (similarity >= threshold && similarity > bestSimilarity) {
       bestSimilarity = similarity;
@@ -83,6 +90,14 @@ export const findMatchingUser = (embedding, users, threshold = 0.6) => {
       }
     }
   }
+  
+  // ALWAYS log all similarities (even below threshold) for debugging
+  console.log('📊 ALL user face similarities (regardless of threshold):');
+  allSimilarities.forEach(item => {
+    const percent = (item.similarity * 100).toFixed(2);
+    const status = item.similarity >= threshold ? '✅' : '❌';
+    console.log(`   ${status} ${item.user}: ${percent}%`);
+  });
 
   return bestMatch;
 };

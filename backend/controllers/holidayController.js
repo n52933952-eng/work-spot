@@ -1,5 +1,6 @@
 import Holiday from '../modles/Holiday.js';
 import Attendance from '../modles/Attendance.js';
+import { io } from '../socket/socket.js';
 
 // Create holiday
 export const createHoliday = async (req, res) => {
@@ -44,6 +45,9 @@ export const createHoliday = async (req, res) => {
       }
     );
 
+    // Emit Socket.io event for real-time update
+    io.emit('holidayCreated', holiday);
+
     res.status(201).json({
       message: 'تم إنشاء العطلة بنجاح',
       holiday
@@ -63,6 +67,7 @@ export const getHolidays = async (req, res) => {
     const { year, type, isActive } = req.query;
     
     const query = {};
+    
     if (year) {
       const startYear = new Date(year, 0, 1);
       const endYear = new Date(year, 11, 31, 23, 59, 59);
@@ -234,6 +239,9 @@ export const updateHoliday = async (req, res) => {
       );
     }
 
+    // Emit Socket.io event for real-time update
+    io.emit('holidayUpdated', holiday);
+
     res.status(200).json({
       message: 'تم تحديث العطلة بنجاح',
       holiday
@@ -276,11 +284,67 @@ export const deleteHoliday = async (req, res) => {
 
     await Holiday.findByIdAndDelete(id);
 
+    // Emit Socket.io event for real-time update
+    io.emit('holidayDeleted', { id });
+
     res.status(200).json({ message: 'تم حذف العطلة بنجاح' });
   } catch (error) {
     console.error('Delete holiday error:', error);
     res.status(500).json({ 
       message: 'حدث خطأ أثناء حذف العطلة',
+      error: error.message 
+    });
+  }
+};
+
+// Get upcoming holidays
+export const getUpcomingHolidays = async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Get limit from query params, default to 3 for mobile app
+    const limit = parseInt(req.query.limit) || 3;
+
+    const holidays = await Holiday.find({
+      endDate: { $gte: today },
+      isActive: true
+    })
+      .populate('branches', 'name')
+      .sort({ startDate: 1 })
+      .limit(limit);
+
+    res.status(200).json({ holidays });
+  } catch (error) {
+    console.error('Get upcoming holidays error:', error);
+    res.status(500).json({ 
+      message: 'حدث خطأ',
+      error: error.message 
+    });
+  }
+};
+
+// Check if specific date is holiday
+export const checkHolidayByDate = async (req, res) => {
+  try {
+    const { date } = req.params;
+    const checkDate = new Date(date);
+    checkDate.setHours(0, 0, 0, 0);
+
+    const holiday = await Holiday.findOne({
+      startDate: { $lte: checkDate },
+      endDate: { $gte: checkDate },
+      isActive: true
+    });
+
+    res.status(200).json({ 
+      isHoliday: !!holiday,
+      holiday: holiday || null
+    });
+  } catch (error) {
+    console.error('Check holiday error:', error);
+    res.status(500).json({ 
+      message: 'حدث خطأ',
       error: error.message 
     });
   }

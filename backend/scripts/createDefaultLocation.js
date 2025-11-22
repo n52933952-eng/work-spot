@@ -5,19 +5,18 @@ import User from '../modles/User.js';
 
 dotenv.config();
 
-// Company location coordinates from Google Maps
-// https://maps.app.goo.gl/1yscqMESQ9JPEMTb8?g_st=iw
-// 32°00'51.1"N 35°52'22.9"E
-// Decimal: 32.041394, 35.894126 (Testing location - Amman, Jordan)
+// Company location coordinates - University of Jordan
+// Coordinates from Google Maps: 32°00'51.1"N 35°52'22.9"E
+// Decimal: 32.014206, 35.873015
 const COMPANY_LOCATION = {
   name: 'المقر الرئيسي',
-  nameAr: 'المقر الرئيسي - عمان',
-  address: 'Jerjes Ar-Reihan St., Amman, Jordan',
-  latitude: 32.041394, // Testing location - Amman, Jordan
-  longitude: 35.894126, // Testing location - Amman, Jordan
-  radius: 50, // 50 meters
+  nameAr: 'المقر الرئيسي - الجامعة الأردنية',
+  address: 'University of Jordan, Queen Rania St., Amman, Jordan',
+  latitude: 32.014206, // University of Jordan
+  longitude: 35.873015, // University of Jordan
+  radius: 100, // 100 meters
   type: 'main',
-  description: 'الموقع الرئيسي للشركة - جامعة الأردنية، عمان'
+  description: 'المقر الرئيسي للشركة - الجامعة الأردنية، عمان'
 };
 
 const createDefaultLocation = async () => {
