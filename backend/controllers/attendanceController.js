@@ -148,6 +148,22 @@ export const checkIn = async (req, res) => {
     
     console.log('⏱️ Check-in request received');
     
+    // Check approval status - prevent check-in if pending or rejected
+    const user = await User.findById(userId).select('approvalStatus rejectionReason');
+    if (user.approvalStatus === 'rejected') {
+      return res.status(403).json({ 
+        message: 'تم رفض طلب التسجيل. لا يمكنك تسجيل الحضور.',
+        approvalStatus: 'rejected',
+        rejectionReason: user.rejectionReason || null
+      });
+    }
+    if (user.approvalStatus === 'pending') {
+      return res.status(403).json({ 
+        message: 'يرجى انتظار موافقة المدير على طلب التسجيل قبل تسجيل الحضور',
+        approvalStatus: 'pending'
+      });
+    }
+    
     // DEVICE BINDING: Verify device fingerprint (security layer)
     const DEVICE_BINDING_ENABLED = true;
     const hasDeviceFingerprint = !!fingerprintPublicKey;
@@ -177,17 +193,17 @@ export const checkIn = async (req, res) => {
       
       // SECURITY: If user used face check-in, also verify device binding
       if (DEVICE_BINDING_ENABLED && verifiedFace) {
-        const user = await User.findById(userId).select('fingerprintData email').lean();
-        if (user.fingerprintData) {
+        const userDevice = await User.findById(userId).select('fingerprintData email').lean();
+        if (userDevice.fingerprintData) {
           if (!hasDeviceFingerprint || !fingerprintPublicKey) {
             console.log('⚠️ Security: Face verified but no device fingerprint provided');
             return res.status(403).json({ 
               message: 'يرجى تسجيل الحضور من جهازك المسجل' 
             });
           }
-          if (user.fingerprintData !== fingerprintPublicKey) {
+          if (userDevice.fingerprintData !== fingerprintPublicKey) {
             console.log('⚠️ Security: Face verified but device fingerprint mismatch');
-            console.log('   Registered device:', user.fingerprintData.substring(0, 30) + '...');
+            console.log('   Registered device:', userDevice.fingerprintData.substring(0, 30) + '...');
             console.log('   Current device:', fingerprintPublicKey.substring(0, 30) + '...');
             return res.status(403).json({ 
               message: 'لا يمكن تسجيل الحضور من جهاز آخر. يرجى استخدام جهازك المسجل.' 
@@ -362,10 +378,10 @@ export const checkIn = async (req, res) => {
 
     // Update attendance points
     const pointsStart = Date.now();
-    const user = req.user;
+    const userForPoints = req.user;
     const points = calculateAttendancePoints(status, lateMinutes);
-    user.attendancePoints += points;
-    await user.save();
+    userForPoints.attendancePoints += points;
+    await userForPoints.save();
     const pointsTime = Date.now() - pointsStart;
     console.log(`⏱️ User points update: ${pointsTime}ms`);
 
@@ -441,6 +457,22 @@ export const checkOut = async (req, res) => {
     const userId = req.user._id;
     const { latitude, longitude, address, faceId, faceEmbedding, faceLandmarks, faceIdVerified, qrCodeId, fingerprintPublicKey } = req.body;
     
+    // Check approval status - prevent check-out if pending or rejected
+    const user = await User.findById(userId).select('approvalStatus rejectionReason');
+    if (user.approvalStatus === 'rejected') {
+      return res.status(403).json({ 
+        message: 'تم رفض طلب التسجيل. لا يمكنك تسجيل الانصراف.',
+        approvalStatus: 'rejected',
+        rejectionReason: user.rejectionReason || null
+      });
+    }
+    if (user.approvalStatus === 'pending') {
+      return res.status(403).json({ 
+        message: 'يرجى انتظار موافقة المدير على طلب التسجيل قبل تسجيل الانصراف',
+        approvalStatus: 'pending'
+      });
+    }
+    
     // DEVICE BINDING: Verify device fingerprint (security layer)
     const DEVICE_BINDING_ENABLED = true;
     const hasDeviceFingerprint = !!fingerprintPublicKey;
@@ -466,17 +498,17 @@ export const checkOut = async (req, res) => {
       
       // SECURITY: If user used face check-out, also verify device binding
       if (DEVICE_BINDING_ENABLED && verifiedFace) {
-        const user = await User.findById(userId).select('fingerprintData email').lean();
-        if (user.fingerprintData) {
+        const userDeviceCheckOut = await User.findById(userId).select('fingerprintData email').lean();
+        if (userDeviceCheckOut.fingerprintData) {
           if (!hasDeviceFingerprint || !fingerprintPublicKey) {
             console.log('⚠️ Security: Face verified but no device fingerprint provided');
             return res.status(403).json({ 
               message: 'يرجى تسجيل الانصراف من جهازك المسجل' 
             });
           }
-          if (user.fingerprintData !== fingerprintPublicKey) {
+          if (userDeviceCheckOut.fingerprintData !== fingerprintPublicKey) {
             console.log('⚠️ Security: Face verified but device fingerprint mismatch');
-            console.log('   Registered device:', user.fingerprintData.substring(0, 30) + '...');
+            console.log('   Registered device:', userDeviceCheckOut.fingerprintData.substring(0, 30) + '...');
             console.log('   Current device:', fingerprintPublicKey.substring(0, 30) + '...');
             return res.status(403).json({ 
               message: 'لا يمكن تسجيل الانصراف من جهاز آخر. يرجى استخدام جهازك المسجل.' 

@@ -47,7 +47,7 @@ import {
 } from '@chakra-ui/react';
 import { FiCheckCircle, FiXCircle, FiClock, FiCalendar, FiUser, FiFileText, FiTrash2 } from 'react-icons/fi';
 import MainLayout from '../components/Layout/MainLayout';
-import { leavesAPI } from '../services/api';
+import { leavesAPI, BASE_URL } from '../services/api';
 import { useSocket } from '../hooks/useSocket';
 
 const Leaves = () => {
@@ -69,7 +69,7 @@ const Leaves = () => {
   const getProfileImageUrl = (profileImage) => {
     if (!profileImage) return null;
     if (profileImage.startsWith('http')) return profileImage;
-    return `http://localhost:5000${profileImage}`;
+    return `${BASE_URL}${profileImage}`;
   };
 
   useEffect(() => {
@@ -253,7 +253,7 @@ const Leaves = () => {
 
   return (
     <MainLayout>
-      <Box p={8}>
+      <Box p={8} w="100%" maxW="100%" overflowX="hidden" boxSizing="border-box">
         <HStack justify="space-between" mb={6}>
           <HStack spacing={4}>
             <Heading size="lg">إدارة الإجازات الشخصية</Heading>

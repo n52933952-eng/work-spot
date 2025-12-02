@@ -247,8 +247,15 @@ const Reports = () => {
 
   return (
     <MainLayout>
-      <Box>
-        <Heading mb={6} color="gray.700">التقارير</Heading>
+      <Box w="100%" maxW="100%" overflowX="hidden" boxSizing="border-box">
+        <Heading 
+          mb={6} 
+          color="gray.700"
+          fontSize={{ base: "lg", md: "xl", lg: "2xl" }}
+          pl={{ base: 12, md: 0 }}
+        >
+          التقارير
+        </Heading>
         
         <SimpleGrid columns={{ base: 1, lg: 2, xl: 3 }} spacing={6}>
           {/* Attendance Report */}

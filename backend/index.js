@@ -23,6 +23,8 @@ import reportRoutes from './routes/reportRoutes.js'
 import announcementRoutes from './routes/announcementRoutes.js'
 import qrCodeRoutes from './routes/qrCodeRoutes.js'
 import dashboardRoutes from './routes/dashboardRoutes.js'
+import salaryRoutes from './routes/salaryRoutes.js'
+import employeeApprovalRoutes from './routes/employeeApprovalRoutes.js'
 
 // Increase payload size limit for image uploads (Base64 images can be large)
 app.use(express.json({ limit: '50mb' }))
@@ -33,7 +35,11 @@ app.use(cookieParser())
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')))
 console.log('📁 Serving static files from:', path.join(__dirname, 'public/uploads'))
 
-app.use(cors({origin:"https://work-spot-6.onrender.com",credentials:true}))
+// CORS configuration - allow localhost for development
+app.use(cors({
+  origin: process.env.CLIENT_URL || "http://localhost:5173",
+  credentials: true
+}))
 
 // API Routes
 app.use('/api/auth', authRoutes)
@@ -45,6 +51,8 @@ app.use('/api/reports', reportRoutes)
 app.use('/api/announcements', announcementRoutes)
 app.use('/api/qrcode', qrCodeRoutes)
 app.use('/api/dashboard', dashboardRoutes)
+app.use('/api/salary', salaryRoutes)
+app.use('/api/employees/approval', employeeApprovalRoutes)
 
 // Health check
 app.get('/api/health', (req, res) => {

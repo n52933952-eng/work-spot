@@ -397,7 +397,8 @@ export const completeRegistration = async (req, res) => {
       faceEmbedding: validatedEmbedding || null, // Store face embedding (generated on-device)
       faceLandmarks: normalizedLandmarks || null, // Store normalized landmarks (DEPRECATED - kept for backward compatibility)
       faceIdEnabled: true,
-      biometricType: biometricType || 'TouchID'
+      biometricType: biometricType || 'TouchID',
+      approvalStatus: 'pending' // New employees need admin approval
     };
     
     if (validatedEmbedding) {
@@ -413,7 +414,41 @@ export const completeRegistration = async (req, res) => {
     const createUserTime = Date.now() - createUserStartTime;
     console.log(`✅ User created successfully in ${createUserTime}ms:`, user._id);
 
-    // Generate token
+    // Send notification to admin about new employee registration
+    try {
+      const { io } = await import('../socket/socket.js');
+      if (io) {
+        // Find all admin users
+        const admins = await User.find({ role: { $in: ['admin', 'hr', 'manager'] } }).select('_id');
+        admins.forEach(admin => {
+          // Send to both room formats for compatibility
+          io.to(`user_${admin._id}`).emit('newEmployeeRegistration', {
+            message: `موظف جديد ينتظر الموافقة: ${user.fullName} (${user.employeeNumber})`,
+            employeeId: user._id,
+            employeeName: user.fullName,
+            employeeNumber: user.employeeNumber,
+            department: user.department,
+            position: user.position,
+            timestamp: new Date().toISOString()
+          });
+          io.to(admin._id.toString()).emit('newEmployeeRegistration', {
+            message: `موظف جديد ينتظر الموافقة: ${user.fullName} (${user.employeeNumber})`,
+            employeeId: user._id,
+            employeeName: user.fullName,
+            employeeNumber: user.employeeNumber,
+            department: user.department,
+            position: user.position,
+            timestamp: new Date().toISOString()
+          });
+        });
+        console.log(`📢 Notification sent to ${admins.length} admin(s) about new employee registration`);
+      }
+    } catch (error) {
+      console.error('Error sending notification to admin:', error);
+      // Don't fail registration if notification fails
+    }
+
+    // Generate token (user can login but will see pending approval message)
     const token = GenerateToken(user._id, res);
     console.log('✅ Token generated');
 
@@ -421,7 +456,7 @@ export const completeRegistration = async (req, res) => {
     const baseURL = process.env.API_BASE_URL || `http://${req.get('host')}`;
     
     const responseData = {
-      message: 'تم إنشاء الحساب بنجاح مع المصادقة الحيوية',
+      message: 'تم إنشاء الحساب بنجاح. يرجى انتظار موافقة المدير.',
       user: {
         _id: user._id,
         employeeNumber: user.employeeNumber,
@@ -435,9 +470,11 @@ export const completeRegistration = async (req, res) => {
         faceImage: user.faceImage ? `${baseURL}${user.faceImage}` : null,
         branch: user.branch,
         faceIdEnabled: user.faceIdEnabled,
-        biometricType: user.biometricType
+        biometricType: user.biometricType,
+        approvalStatus: user.approvalStatus // Include approval status
       },
-      token
+      token,
+      requiresApproval: true // Flag to show approval message in mobile app
     };
     
     const totalTime = Date.now() - registrationStartTime;
@@ -632,6 +669,24 @@ export const login = async (req, res) => {
         message: 'تم إيقاف هذا الحساب' 
       });
     }
+
+    // Check approval status
+    if (user.approvalStatus === 'rejected') {
+      return res.status(403).json({ 
+        message: 'تم رفض طلب التسجيل. لا يمكنك تسجيل الدخول.',
+        approvalStatus: 'rejected',
+        rejectionReason: user.rejectionReason || null
+      });
+    }
+
+    // Allow login even if pending - but user will see message in home screen
+    // if (user.approvalStatus === 'pending') {
+    //   return res.status(403).json({ 
+    //     message: 'يرجى انتظار موافقة المدير على طلب التسجيل',
+    //     approvalStatus: 'pending',
+    //     requiresApproval: true
+    //   });
+    // }
 
     // Verify password
     const isPasswordCorrect = await user.comparePassword(password);
@@ -912,6 +967,24 @@ export const loginWithBiometric = async (req, res) => {
         });
       }
 
+      // Check approval status
+      if (user.approvalStatus === 'rejected') {
+        return res.status(403).json({ 
+          message: 'تم رفض طلب التسجيل. لا يمكنك تسجيل الدخول.',
+          approvalStatus: 'rejected',
+          rejectionReason: user.rejectionReason || null
+        });
+      }
+
+      // Allow login even if pending - but user will see message in home screen
+      // if (user.approvalStatus === 'pending') {
+      //   return res.status(403).json({ 
+      //     message: 'يرجى انتظار موافقة المدير على طلب التسجيل',
+      //     approvalStatus: 'pending',
+      //     requiresApproval: true
+      //   });
+      // }
+
       console.log(`✅ Fingerprint verified for user: ${user.email || user.employeeNumber}`);
       // Fingerprint verified - login successful
       user.lastLogin = new Date();
@@ -1067,6 +1140,24 @@ export const loginWithBiometric = async (req, res) => {
                 message: 'المصادقة الحيوية غير مفعلة لهذا الحساب' 
               });
             }
+
+            // Check approval status
+            if (user.approvalStatus === 'rejected') {
+              return res.status(403).json({ 
+                message: 'تم رفض طلب التسجيل. لا يمكنك تسجيل الدخول.',
+                approvalStatus: 'rejected',
+                rejectionReason: user.rejectionReason || null
+              });
+            }
+
+            // Allow login even if pending - but user will see message in home screen
+            // if (user.approvalStatus === 'pending') {
+            //   return res.status(403).json({ 
+            //     message: 'يرجى انتظار موافقة المدير على طلب التسجيل',
+            //     approvalStatus: 'pending',
+            //     requiresApproval: true
+            //   });
+            // }
 
             user.lastLogin = new Date();
             await user.save();

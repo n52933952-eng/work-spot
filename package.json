@@ -7,7 +7,9 @@
     "dev": "nodemon backend/index.js",
     "start": "node backend/index.js",
     "build": "npm install && npm install --prefix frontent && npm run build --prefix frontent",
-    "setup:location": "node backend/scripts/createDefaultLocation.js"
+    "setup:location": "node backend/scripts/createDefaultLocation.js",
+    "test:attendance": "node backend/scripts/addTestAttendance.js",
+    "remove:test": "node backend/scripts/removeTestAttendance.js"
   },
   "keywords": [],
   "author": "",

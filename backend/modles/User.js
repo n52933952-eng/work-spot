@@ -109,9 +109,42 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  baseSalary: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  overtimeRate: {
+    type: Number,
+    default: 1.5, // 1.5x base hourly rate for overtime
+    min: 1
+  },
   isActive: {
     type: Boolean,
     default: true
+  },
+  approvalStatus: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending' // New employees need admin approval
+  },
+  approvedAt: {
+    type: Date
+  },
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  rejectedAt: {
+    type: Date
+  },
+  rejectedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  rejectionReason: {
+    type: String,
+    trim: true
   },
   lastLogin: {
     type: Date

@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = "https://work-spot-6.onrender.com";
+// Socket.io URL - Set VITE_SOCKET_URL in .env file or use default server URL
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "https://work-spot-6.onrender.com";
 
 export const useSocket = (onConnect, onDisconnect, eventHandlers = {}) => {
   const socketRef = useRef(null);

@@ -1,7 +1,12 @@
 // API configuration for admin panel
+// Set VITE_API_URL in .env file or use default server URL
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://work-spot-6.onrender.com/api';
 
+// Base URL without /api for static assets (images, etc.)
+export const BASE_URL = API_BASE_URL.replace('/api', '');
+
 console.log('🔗 API Base URL:', API_BASE_URL);
+console.log('🔗 Base URL (for assets):', BASE_URL);
 
 // Helper function for API calls
 const apiCall = async (endpoint, options = {}) => {
@@ -188,6 +193,38 @@ export const announcementsAPI = {
   }),
 };
 
+// Salary API calls
+export const salaryAPI = {
+  getAllEmployees: () => apiCall('/salary/employees'),
+  calculate: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiCall(`/salary/calculate${queryString ? `?${queryString}` : ''}`);
+  },
+  getSaved: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiCall(`/salary/saved${queryString ? `?${queryString}` : ''}`);
+  },
+  updateEmployee: (userId, data) => apiCall(`/salary/employee/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
+  updateStatus: (salaryId, data) => apiCall(`/salary/${salaryId}/status`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
+};
+
+export const employeeApprovalAPI = {
+  getPending: () => apiCall('/employees/approval/pending'),
+  approve: (employeeId) => apiCall(`/employees/approval/${employeeId}/approve`, {
+    method: 'PUT',
+  }),
+  reject: (employeeId, reason) => apiCall(`/employees/approval/${employeeId}/reject`, {
+    method: 'PUT',
+    body: JSON.stringify({ reason }),
+  }),
+};
+
 export default {
   dashboardAPI,
   authAPI,
@@ -195,6 +232,9 @@ export default {
   holidaysAPI,
   leavesAPI,
   announcementsAPI,
+  salaryAPI,
+  employeeApprovalAPI,
   downloadFile,
+  BASE_URL,
 };
 

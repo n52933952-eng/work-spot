@@ -10,6 +10,7 @@ import {
   Card,
   CardBody,
   Table,
+  TableContainer,
   Thead,
   Tbody,
   Tr,
@@ -38,7 +39,7 @@ import {
 } from '@chakra-ui/react';
 import { FiUsers, FiClock, FiUserX, FiCheckCircle, FiRefreshCw, FiLogOut } from 'react-icons/fi';
 import MainLayout from '../components/Layout/MainLayout';
-import { dashboardAPI } from '../services/api';
+import { dashboardAPI, BASE_URL } from '../services/api';
 import { useSocket } from '../hooks/useSocket';
 import AttendanceMap from '../components/AttendanceMap';
 
@@ -271,30 +272,52 @@ const Dashboard = () => {
 
   return (
     <MainLayout>
-      <Box>
-        <HStack justify="space-between" mb={4}>
-          <VStack align="start" spacing={1}>
-            <HStack spacing={4}>
-              <Heading color="gray.700">لوحة الحضور</Heading>
+      <Box w="100%" maxW="100%" overflowX="hidden" boxSizing="border-box">
+        <HStack 
+          justify="space-between" 
+          mb={4} 
+          flexWrap="wrap" 
+          spacing={{ base: 2, md: 4 }}
+          pl={{ base: 12, md: 0 }}
+        >
+          <VStack align="start" spacing={1} flex={{ base: "1 1 100%", md: "0 1 auto" }}>
+            <HStack spacing={{ base: 2, md: 4 }} flexWrap="wrap">
+              <Heading 
+                color="gray.700"
+                fontSize={{ base: "xl", md: "2xl", lg: "3xl" }}
+              >
+                لوحة الحضور
+              </Heading>
               {socketConnected && filterMode === 'today' && (
-                <Badge colorScheme="green" fontSize="xs" px={2} py={1} borderRadius="md">
+                <Badge 
+                  colorScheme="green" 
+                  fontSize={{ base: "2xs", md: "xs" }} 
+                  px={{ base: 1.5, md: 2 }} 
+                  py={{ base: 0.5, md: 1 }} 
+                  borderRadius="md"
+                >
                   🔴 مباشر
                 </Badge>
               )}
             </HStack>
-            <Text fontSize="sm" color="gray.500">
+            <Text fontSize={{ base: "xs", md: "sm" }} color="gray.500">
               {filterMode === 'today' && 'حضور اليوم'}
               {filterMode === 'date' && `حضور ${formatDate(selectedDate)}`}
               {filterMode === 'thisMonth' && 'حضور هذا الشهر'}
               {filterMode === 'lastMonth' && 'حضور الشهر الماضي'}
             </Text>
           </VStack>
-          <HStack spacing={3}>
+          <HStack 
+            spacing={{ base: 2, md: 3 }} 
+            flex={{ base: "1 1 100%", md: "0 1 auto" }} 
+            justify={{ base: "flex-end", md: "flex-end" }}
+            w={{ base: "100%", md: "auto" }}
+          >
             <VStack align="end" spacing={0}>
-              <Text fontSize="sm" color="gray.600" fontWeight="medium">
+              <Text fontSize={{ base: "xs", md: "sm" }} color="gray.600" fontWeight="medium">
                 {formatTime(currentTime)}
               </Text>
-              <Text fontSize="xs" color="gray.500">
+              <Text fontSize={{ base: "2xs", md: "xs" }} color="gray.500">
                 {formatDate()}
               </Text>
             </VStack>
@@ -305,12 +328,13 @@ const Dashboard = () => {
               isLoading={loading}
               colorScheme="blue"
               variant="outline"
+              size={{ base: "sm", md: "md" }}
             />
           </HStack>
         </HStack>
 
         {/* Date Filter Section */}
-        <Card mb={6}>
+        <Card mb={6} ml={{ base: -2, md: 0 }}>
           <CardBody>
             <HStack spacing={4} flexWrap="wrap" justify="space-between">
               <HStack spacing={4} flexWrap="wrap">
@@ -409,11 +433,49 @@ const Dashboard = () => {
         <Card>
           <CardBody>
             <Tabs variant="enclosed" colorScheme="blue">
-              <TabList>
-                <Tab>الحاضرون ({stats.present})</Tab>
-                <Tab>المتأخرون ({stats.late})</Tab>
-                <Tab>المنصرفون ({stats.checkedOut})</Tab>
-                <Tab>الغائبون ({stats.absent})</Tab>
+              <TabList 
+                flexWrap="wrap"
+                overflowX="auto"
+                css={{
+                  '&::-webkit-scrollbar': {
+                    display: 'none'
+                  },
+                  '-ms-overflow-style': 'none',
+                  'scrollbar-width': 'none'
+                }}
+              >
+                <Tab 
+                  fontSize={{ base: "xs", md: "sm" }}
+                  px={{ base: 2, md: 4 }}
+                  py={{ base: 2, md: 3 }}
+                  whiteSpace="nowrap"
+                >
+                  الحاضرون ({stats.present})
+                </Tab>
+                <Tab 
+                  fontSize={{ base: "xs", md: "sm" }}
+                  px={{ base: 2, md: 4 }}
+                  py={{ base: 2, md: 3 }}
+                  whiteSpace="nowrap"
+                >
+                  المتأخرون ({stats.late})
+                </Tab>
+                <Tab 
+                  fontSize={{ base: "xs", md: "sm" }}
+                  px={{ base: 2, md: 4 }}
+                  py={{ base: 2, md: 3 }}
+                  whiteSpace="nowrap"
+                >
+                  المنصرفون ({stats.checkedOut})
+                </Tab>
+                <Tab 
+                  fontSize={{ base: "xs", md: "sm" }}
+                  px={{ base: 2, md: 4 }}
+                  py={{ base: 2, md: 3 }}
+                  whiteSpace="nowrap"
+                >
+                  الغائبون ({stats.absent})
+                </Tab>
               </TabList>
 
               <TabPanels>
@@ -424,7 +486,8 @@ const Dashboard = () => {
                       <Text color="gray.500">لا يوجد موظفين حاضرين في الوقت المحدد</Text>
                     </Center>
                   ) : (
-                    <Table variant="simple">
+                    <TableContainer overflowX="auto" maxW="100%">
+                      <Table variant="simple">
                       <Thead>
                         <Tr>
                           <Th>الموظف</Th>
@@ -443,7 +506,7 @@ const Dashboard = () => {
                                 <Avatar 
                                   size="sm" 
                                   name={emp.name} 
-                                  src={emp.profileImage ? `http://localhost:5000${emp.profileImage}` : undefined}
+                                  src={emp.profileImage ? `${BASE_URL}${emp.profileImage}` : undefined}
                                 />
                                 <VStack align="start" spacing={0}>
                                   <Text fontWeight="medium">{emp.name}</Text>
@@ -470,6 +533,7 @@ const Dashboard = () => {
                         ))}
                       </Tbody>
                     </Table>
+                    </TableContainer>
                   )}
                 </TabPanel>
 
@@ -480,7 +544,8 @@ const Dashboard = () => {
                       <Text color="gray.500">لا يوجد موظفين متأخرين</Text>
                     </Center>
                   ) : (
-                    <Table variant="simple">
+                    <TableContainer overflowX="auto" maxW="100%">
+                      <Table variant="simple">
                       <Thead>
                         <Tr>
                           <Th>الموظف</Th>
@@ -499,7 +564,7 @@ const Dashboard = () => {
                                 <Avatar 
                                   size="sm" 
                                   name={emp.name} 
-                                  src={emp.profileImage ? `http://localhost:5000${emp.profileImage}` : undefined}
+                                  src={emp.profileImage ? `${BASE_URL}${emp.profileImage}` : undefined}
                                 />
                                 <VStack align="start" spacing={0}>
                                   <Text fontWeight="medium">{emp.name}</Text>
@@ -526,6 +591,7 @@ const Dashboard = () => {
                         ))}
                       </Tbody>
                     </Table>
+                    </TableContainer>
                   )}
                 </TabPanel>
 
@@ -536,7 +602,8 @@ const Dashboard = () => {
                       <Text color="gray.500">لا يوجد موظفين منصرفين حتى الآن</Text>
                     </Center>
                   ) : (
-                    <Table variant="simple">
+                    <TableContainer overflowX="auto" maxW="100%">
+                      <Table variant="simple">
                       <Thead>
                         <Tr>
                           <Th>الموظف</Th>
@@ -555,7 +622,7 @@ const Dashboard = () => {
                                 <Avatar 
                                   size="sm" 
                                   name={emp.name} 
-                                  src={emp.profileImage ? `http://localhost:5000${emp.profileImage}` : undefined}
+                                  src={emp.profileImage ? `${BASE_URL}${emp.profileImage}` : undefined}
                                 />
                                 <VStack align="start" spacing={0}>
                                   <Text fontWeight="medium">{emp.name}</Text>
@@ -584,6 +651,7 @@ const Dashboard = () => {
                         ))}
                       </Tbody>
                     </Table>
+                    </TableContainer>
                   )}
                 </TabPanel>
 
@@ -594,7 +662,8 @@ const Dashboard = () => {
                       <Text color="gray.500">جميع الموظفين حاضرون! 🎉</Text>
                     </Center>
                   ) : (
-                    <Table variant="simple">
+                    <TableContainer overflowX="auto" maxW="100%">
+                      <Table variant="simple">
                       <Thead>
                         <Tr>
                           <Th>اسم الموظف</Th>
@@ -618,6 +687,7 @@ const Dashboard = () => {
                         ))}
                       </Tbody>
                     </Table>
+                    </TableContainer>
                   )}
                 </TabPanel>
               </TabPanels>

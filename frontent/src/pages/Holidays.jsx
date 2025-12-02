@@ -4,6 +4,7 @@ import {
   Heading,
   Button,
   Table,
+  TableContainer,
   Thead,
   Tbody,
   Tr,
@@ -207,13 +208,28 @@ const Holidays = () => {
 
   return (
     <MainLayout>
-      <Box p={8}>
-        <HStack justify="space-between" mb={6}>
-          <Heading size="lg">إدارة العطل</Heading>
+      <Box w="100%" maxW="100%" overflowX="hidden" boxSizing="border-box">
+        <HStack 
+          justify="space-between" 
+          mb={6} 
+          flexWrap="wrap" 
+          spacing={{ base: 2, md: 4 }}
+          pl={{ base: 12, md: 0 }}
+        >
+          <Heading 
+            size="lg"
+            fontSize={{ base: "lg", md: "xl", lg: "2xl" }}
+            flex={{ base: "1 1 100%", md: "0 1 auto" }}
+          >
+            إدارة العطل
+          </Heading>
           <Button
             leftIcon={<FiPlus />}
             colorScheme="blue"
             onClick={() => handleOpenModal()}
+            size={{ base: "sm", md: "md" }}
+            flex={{ base: "0 0 auto", md: "0 1 auto" }}
+            w={{ base: "100%", md: "auto" }}
           >
             إضافة عطلة جديدة
           </Button>
@@ -221,12 +237,32 @@ const Holidays = () => {
 
         {/* Tabs for List and Calendar View */}
         <Tabs mb={6} variant="enclosed">
-          <TabList>
-            <Tab>
+          <TabList 
+            flexWrap="wrap"
+            overflowX="auto"
+            css={{
+              '&::-webkit-scrollbar': {
+                display: 'none'
+              },
+              '-ms-overflow-style': 'none',
+              'scrollbar-width': 'none'
+            }}
+          >
+            <Tab 
+              fontSize={{ base: "xs", md: "sm" }}
+              px={{ base: 2, md: 4 }}
+              py={{ base: 2, md: 3 }}
+              whiteSpace="nowrap"
+            >
               <Icon as={FiList} mr={2} />
               القائمة
             </Tab>
-            <Tab>
+            <Tab 
+              fontSize={{ base: "xs", md: "sm" }}
+              px={{ base: 2, md: 4 }}
+              py={{ base: 2, md: 3 }}
+              whiteSpace="nowrap"
+            >
               <Icon as={FiCalendar} mr={2} />
               التقويم
             </Tab>
@@ -300,8 +336,8 @@ const Holidays = () => {
                 </VStack>
               </Center>
             ) : (
-              <Box overflowX="auto">
-                <Table variant="simple">
+              <TableContainer overflowX="auto" maxW="100%">
+                <Table variant="simple" size={{ base: "sm", md: "md" }}>
                   <Thead>
                     <Tr>
                       <Th>الاسم</Th>
@@ -373,7 +409,7 @@ const Holidays = () => {
                     })}
                   </Tbody>
                 </Table>
-              </Box>
+              </TableContainer>
             )}
           </CardBody>
         </Card>

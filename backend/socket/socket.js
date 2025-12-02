@@ -43,15 +43,26 @@ export const getRecipientSockedId = (recipientId) => {
 const userSocketMap = {}
 
 io.on("connection",(socket) => {
-    console.log("user connected",socket.id)
+    console.log("🔌 User connected", socket.id)
+    console.log("📋 Connection query:", socket.handshake.query)
     
     const userId = socket.handshake.query.userId
-    if(userId && userId !== "undefined") {
+    if(userId && userId !== "undefined" && userId !== "null") {
       userSocketMap[userId] = socket.id
       // Join socket to user's room for targeted messaging
-      socket.join(userId.toString())
-      console.log(`✅ User ${userId} joined room: ${userId}`)
+      socket.join(`user_${userId}`) // Use 'user_' prefix to match emit pattern
+      socket.join(userId.toString()) // Also join without prefix for backward compatibility
+      console.log(`✅ User ${userId} joined rooms: user_${userId} and ${userId}`)
+      console.log(`📊 Total connected users: ${Object.keys(userSocketMap).length}`)
+      
+      // Log all rooms this socket is in
+      const rooms = Array.from(socket.rooms);
+      console.log(`📋 Socket ${socket.id} is in rooms:`, rooms);
+      
       io.emit("userOnline", userId)
+    } else {
+      console.log("⚠️ User connected without userId or userId is undefined/null")
+      console.log("   Query userId value:", userId)
     }
 
    

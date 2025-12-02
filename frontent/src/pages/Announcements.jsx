@@ -263,7 +263,7 @@ const Announcements = () => {
 
   return (
     <MainLayout>
-      <Box>
+      <Box w="100%" maxW="100%" overflowX="hidden" boxSizing="border-box">
         <Heading mb={6} display="flex" alignItems="center" gap={3}>
           <Icon as={FiBell} />
           الإعلانات

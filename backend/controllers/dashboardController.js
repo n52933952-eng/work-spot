@@ -397,9 +397,9 @@ export const getTodayAttendance = async (req, res) => {
         
         const location = checkInMap.get(key);
         location.employees.push({
-          id: att.user._id,
-          name: att.user.fullName,
-          employeeNumber: att.user.employeeNumber,
+          id: att?.user?._id,
+          name: att?.user?.fullName,
+          employeeNumber: att?.user?.employeeNumber,
           checkInTime: new Date(att.checkInTime).toLocaleTimeString('ar-JO', {
             hour: '2-digit',
             minute: '2-digit',

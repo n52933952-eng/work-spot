@@ -5,6 +5,7 @@ import {
   Card,
   CardBody,
   Table,
+  TableContainer,
   Thead,
   Tbody,
   Tr,
@@ -204,8 +205,15 @@ const Points = () => {
 
   return (
     <MainLayout>
-      <Box>
-        <Heading mb={6} color="gray.700">نظام النقاط</Heading>
+      <Box w="100%" maxW="100%" overflowX="hidden" boxSizing="border-box">
+        <Heading 
+          mb={6} 
+          color="gray.700"
+          fontSize={{ base: "lg", md: "xl", lg: "2xl" }}
+          pl={{ base: 12, md: 0 }}
+        >
+          نظام النقاط
+        </Heading>
         
         {/* Points Rules */}
         <Card mb={6}>
@@ -246,7 +254,8 @@ const Points = () => {
                 لا توجد بيانات بعد. عند تسجيل أي موظف للحضور سيظهر هنا مباشرة.
               </Text>
             ) : (
-            <Table variant="simple">
+            <TableContainer overflowX="auto" maxW="100%">
+              <Table variant="simple" size={{ base: "sm", md: "md" }}>
               <Thead>
                 <Tr>
                   <Th>الترتيب</Th>
@@ -298,6 +307,7 @@ const Points = () => {
                 ))}
               </Tbody>
             </Table>
+            </TableContainer>
             )}
           </CardBody>
         </Card>
