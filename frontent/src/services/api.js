@@ -73,6 +73,10 @@ export const dashboardAPI = {
     const queryString = new URLSearchParams(params).toString();
     return apiCall(`/dashboard/employees?${queryString}`);
   },
+  updateEmployee: (employeeId, data) => apiCall(`/dashboard/employees/${employeeId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
 };
 
 // Auth API calls

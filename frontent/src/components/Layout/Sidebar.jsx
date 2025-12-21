@@ -38,11 +38,12 @@ const Sidebar = ({ isMobile, isOpen, onClose, onOpen }) => {
 
   const menuItems = [
     { path: '/dashboard', label: 'الموظفين', icon: FiUsers },
-    { path: '/employee-approval', label: 'موافقة الموظفين', icon: FiUserCheck },
+    { path: '/employees', label: 'إدارة الموظفين', icon: FiUsers },
+    { path: '/employee-approval', label: 'الموافقة لموظف جديد', icon: FiUserCheck },
     { path: '/salary', label: 'الرواتب', icon: FiDollarSign },
     { path: '/reports', label: 'التقارير', icon: FiFileText },
     { path: '/points', label: 'النقاط', icon: FiAward },
-    { path: '/holidays', label: 'العطل', icon: FiCalendar },
+    { path: '/holidays', label: 'العطل الرسمية', icon: FiCalendar },
     { path: '/leaves', label: 'الإجازات الشخصية', icon: FiClock },
     { path: '/announcements', label: 'الإعلانات', icon: FiBell },
   ];

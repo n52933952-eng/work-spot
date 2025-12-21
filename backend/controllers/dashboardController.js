@@ -189,12 +189,17 @@ export const getAllEmployees = async (req, res) => {
     const { department, isActive, role } = req.query;
     
     const query = {};
+    // Always exclude admin users from employees list
+    if (role && role !== 'admin') {
+      query.role = role;
+    } else {
+      query.role = { $ne: 'admin' };
+    }
     if (department) query.department = department;
     if (isActive !== undefined) query.isActive = isActive === 'true';
-    if (role) query.role = role;
 
     const employees = await User.find(query)
-      .select('-password')
+      .select('-password -faceEmbedding -faceLandmarks')
       .populate('branch', 'name address')
       .sort({ createdAt: -1 });
 
@@ -203,6 +208,51 @@ export const getAllEmployees = async (req, res) => {
     console.error('Get all employees error:', error);
     res.status(500).json({ 
       message: 'حدث خطأ',
+      error: error.message 
+    });
+  }
+};
+
+// Update employee (position, department, role, etc.)
+export const updateEmployee = async (req, res) => {
+  try {
+    // Only admin/hr can update employees
+    if (!['admin', 'hr'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'غير مصرح لك' });
+    }
+
+    const { id } = req.params;
+    const { position, department, role, isActive, expectedCheckInTime, expectedCheckOutTime } = req.body;
+
+    const employee = await User.findById(id);
+    if (!employee) {
+      return res.status(404).json({ message: 'الموظف غير موجود' });
+    }
+
+    // Update allowed fields
+    if (position !== undefined) employee.position = position;
+    if (department !== undefined) employee.department = department;
+    if (role !== undefined && ['employee', 'hr', 'admin', 'manager'].includes(role)) {
+      employee.role = role;
+    }
+    if (isActive !== undefined) employee.isActive = isActive;
+    if (expectedCheckInTime !== undefined) employee.expectedCheckInTime = expectedCheckInTime;
+    if (expectedCheckOutTime !== undefined) employee.expectedCheckOutTime = expectedCheckOutTime;
+
+    await employee.save();
+
+    const updatedEmployee = await User.findById(id)
+      .select('-password -faceEmbedding -faceLandmarks')
+      .populate('branch', 'name address');
+
+    res.status(200).json({
+      message: 'تم تحديث بيانات الموظف بنجاح',
+      employee: updatedEmployee
+    });
+  } catch (error) {
+    console.error('Update employee error:', error);
+    res.status(500).json({ 
+      message: 'حدث خطأ أثناء تحديث بيانات الموظف',
       error: error.message 
     });
   }
