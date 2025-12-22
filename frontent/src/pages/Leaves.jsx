@@ -85,13 +85,29 @@ const Leaves = () => {
     if (!url) return;
 
     try {
-      // Fetch the file as a blob to handle cross-origin downloads
-      const response = await fetch(url);
+      // Get token from localStorage for authenticated requests
+      const token = localStorage.getItem('adminToken');
+      
+      // Fetch the file as a blob with authentication
+      const headers = {};
+      if (token && token !== 'admin-authenticated') {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: headers,
+        credentials: 'include', // Include cookies if any
+      });
+      
       if (!response.ok) {
         throw new Error('فشل تحميل الملف');
       }
       
       const blob = await response.blob();
+      
+      // Check if browser supports download attribute properly
+      // Create blob URL
       const blobUrl = window.URL.createObjectURL(blob);
       
       // Create a temporary anchor element to trigger download
@@ -100,13 +116,26 @@ const Leaves = () => {
       link.download = attachment.filename || 'attachment.pdf';
       link.style.display = 'none';
       
-      // Append to body, click, then remove
+      // Force download by setting both download attribute and using a data URL approach
       document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
       
-      // Clean up the blob URL
-      window.URL.revokeObjectURL(blobUrl);
+      // Trigger click immediately
+      link.click();
+      
+      // Clean up after a short delay
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+      }, 100);
+      
+      // Show success message
+      toast({
+        title: 'تم التحميل',
+        description: 'جاري تحميل الملف...',
+        status: 'success',
+        duration: 2000,
+      });
+      
     } catch (error) {
       console.error('Error downloading attachment:', error);
       toast({
