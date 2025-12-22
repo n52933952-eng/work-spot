@@ -47,7 +47,7 @@ import {
 } from '@chakra-ui/react';
 import { FiCheckCircle, FiXCircle, FiClock, FiCalendar, FiUser, FiFileText, FiTrash2, FiDownload, FiPaperclip } from 'react-icons/fi';
 import MainLayout from '../components/Layout/MainLayout';
-import { leavesAPI, BASE_URL } from '../services/api';
+import { leavesAPI, BASE_URL, API_BASE_URL } from '../services/api';
 import { useSocket } from '../hooks/useSocket';
 
 const Leaves = () => {
@@ -76,7 +76,12 @@ const Leaves = () => {
   const getAttachmentUrl = (attachment) => {
     if (!attachment || !attachment.url) return null;
     if (attachment.url.startsWith('http')) return attachment.url;
-    return `${BASE_URL}${attachment.url}`;
+    
+    // Extract filename from URL path (e.g., /uploads/leaves/filename.pdf)
+    const filename = attachment.url.split('/').pop();
+    
+    // Use the download endpoint instead of direct file URL
+    return `${API_BASE_URL}/leaves/attachment/${filename}`;
   };
 
   // Function to download PDF attachment
@@ -85,38 +90,13 @@ const Leaves = () => {
     if (!url) return;
 
     try {
-      // Get token from localStorage for authenticated requests
-      const token = localStorage.getItem('adminToken');
-      
-      // Fetch the file as an array buffer to preserve binary data
-      const headers = {};
-      if (token && token !== 'admin-authenticated') {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: headers,
-        credentials: 'include',
-      });
-      
-      if (!response.ok) {
-        throw new Error('فشل تحميل الملف');
-      }
-      
-      // Get the file as array buffer to preserve binary data
-      const arrayBuffer = await response.arrayBuffer();
-      
-      // Create blob from array buffer with correct MIME type
-      const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
-      
-      // Create blob URL
-      const blobUrl = window.URL.createObjectURL(blob);
-      
-      // Create a temporary anchor element to trigger download
+      // Use a simple approach: create a download link directly to the URL
+      // This avoids blob conversion which might corrupt the file
       const link = document.createElement('a');
-      link.href = blobUrl;
+      link.href = url;
       link.download = attachment.filename || 'attachment.pdf';
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
       link.style.display = 'none';
       
       // Append to body
@@ -125,18 +105,17 @@ const Leaves = () => {
       // Trigger click
       link.click();
       
-      // Clean up after a delay
+      // Clean up immediately
       setTimeout(() => {
         if (document.body.contains(link)) {
           document.body.removeChild(link);
         }
-        window.URL.revokeObjectURL(blobUrl);
-      }, 200);
+      }, 100);
       
       // Show success message
       toast({
         title: 'تم التحميل',
-        description: 'تم تحميل الملف بنجاح',
+        description: 'جاري تحميل الملف...',
         status: 'success',
         duration: 2000,
       });
@@ -145,12 +124,10 @@ const Leaves = () => {
       console.error('Error downloading attachment:', error);
       toast({
         title: 'خطأ',
-        description: 'فشل تحميل الملف. جاري فتحه في نافذة جديدة...',
-        status: 'warning',
+        description: 'فشل تحميل الملف',
+        status: 'error',
         duration: 3000,
       });
-      // Fallback: open in new tab if download fails
-      window.open(url, '_blank');
     }
   };
 

@@ -32,15 +32,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }))
 app.use(cookieParser())
 
 // Serve static files from public folder (for uploaded images and PDFs)
-// Note: We don't set Content-Disposition here to allow both viewing and downloading
-app.use('/uploads', express.static(path.join(__dirname, 'public/uploads'), {
-  setHeaders: (res, filePath) => {
-    // Set proper Content-Type for PDFs
-    if (filePath.endsWith('.pdf')) {
-      res.setHeader('Content-Type', 'application/pdf');
-    }
-  }
-}))
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')))
 console.log('📁 Serving static files from:', path.join(__dirname, 'public/uploads'))
 
 // CORS configuration - allow localhost for development

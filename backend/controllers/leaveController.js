@@ -2,6 +2,12 @@ import Leave from '../modles/Leave.js';
 import Attendance from '../modles/Attendance.js';
 import User from '../modles/User.js';
 import { io, getRecipientSockedId } from '../socket/socket.js'; // Import Socket.io
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Calculate days between two dates (excluding weekends)
 const calculateWorkingDays = (startDate, endDate) => {
@@ -125,6 +131,32 @@ export const createLeave = async (req, res) => {
     console.error('Create leave error:', error);
     res.status(500).json({ 
       message: 'حدث خطأ أثناء إنشاء طلب الإجازة',
+      error: error.message 
+    });
+  }
+};
+
+// Download leave attachment
+export const downloadAttachment = async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const filePath = path.join(__dirname, '../public/uploads/leaves', filename);
+    
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ message: 'الملف غير موجود' });
+    }
+    
+    // Set headers for download
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/pdf');
+    
+    // Send the file
+    res.sendFile(filePath);
+  } catch (error) {
+    console.error('Download attachment error:', error);
+    res.status(500).json({ 
+      message: 'حدث خطأ أثناء تحميل الملف',
       error: error.message 
     });
   }
