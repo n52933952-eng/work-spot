@@ -1088,11 +1088,12 @@ export const loginWithBiometric = async (req, res) => {
             console.log(`🔍 DIAGNOSTIC: No match found even at 50% threshold - completely different faces!`);
           }
           
-          // TEMPORARY: 70% threshold due to TFLite non-determinism
+          // TEMPORARY: 65% threshold due to TFLite non-determinism
           // Same person varies: 75-82% similarity between captures
           // Root causes: face detection variations, TFLite randomness, preprocessing
+          // Lowered from 70% to 65% to be more lenient for login (registration uses 97%)
           // TODO: Implement multiple embeddings + voting system for stability
-          const match = findMatchingUser(faceEmbedding, allUsers, 0.70);
+          const match = findMatchingUser(faceEmbedding, allUsers, 0.65);
           
           const loginSearchTime = Date.now() - loginStartTime;
           console.log(`⏱️ Login embedding search completed in ${loginSearchTime}ms`);
@@ -1209,6 +1210,29 @@ export const loginWithBiometric = async (req, res) => {
                 console.log('   1. User is not active (isActive=false)');
                 console.log('   2. Face ID is disabled (faceIdEnabled=false)');
                 console.log('   3. Face ID does not exist in database');
+                
+                // FINAL ATTEMPT: Try to find user by faceId WITHOUT filters (for debugging)
+                const anyUserByFaceId = await User.findOne({ faceId: faceId });
+                if (anyUserByFaceId) {
+                  console.log('🔍 DEBUG: Found user with faceId but with restrictions:');
+                  console.log('   - isActive:', anyUserByFaceId.isActive);
+                  console.log('   - faceIdEnabled:', anyUserByFaceId.faceIdEnabled);
+                  console.log('   - approvalStatus:', anyUserByFaceId.approvalStatus);
+                  console.log('   - email:', anyUserByFaceId.email || anyUserByFaceId.employeeNumber);
+                  
+                  // If user exists but is not active or faceId is disabled, provide specific error
+                  if (!anyUserByFaceId.isActive) {
+                    return res.status(403).json({ 
+                      message: 'الحساب غير نشط. يرجى الاتصال بالمدير.' 
+                    });
+                  }
+                  if (!anyUserByFaceId.faceIdEnabled) {
+                    return res.status(403).json({ 
+                      message: 'المصادقة الحيوية غير مفعلة لهذا الحساب' 
+                    });
+                  }
+                }
+                
                 return res.status(401).json({ 
                   message: 'الوجه غير مسجل أو غير صحيح' 
                 });
