@@ -23,12 +23,35 @@ const calculateWorkingDays = (startDate, endDate) => {
 // Create leave request
 export const createLeave = async (req, res) => {
   try {
-    const { type, startDate, endDate, reason, attachments } = req.body;
+    console.log('📥 [Backend] Received leave request:');
+    console.log('  - req.body:', req.body);
+    console.log('  - req.file:', req.file ? {
+      fieldname: req.file.fieldname,
+      originalname: req.file.originalname,
+      filename: req.file.filename,
+      mimetype: req.file.mimetype,
+      size: req.file.size
+    } : 'No file');
+    console.log('  - req.user:', req.user ? { _id: req.user._id, role: req.user.role } : 'No user');
+    
+    const { type, startDate, endDate, reason } = req.body;
     const userId = req.user.role === 'admin' || req.user.role === 'hr' 
       ? req.body.userId || req.user._id 
       : req.user._id;
 
+    console.log('📋 [Backend] Extracted fields:');
+    console.log('  - type:', type);
+    console.log('  - startDate:', startDate);
+    console.log('  - endDate:', endDate);
+    console.log('  - reason:', reason);
+    console.log('  - userId:', userId);
+
     if (!type || !startDate || !endDate || !reason) {
+      console.error('❌ [Backend] Missing required fields:');
+      console.error('  - type:', type ? '✓' : '✗');
+      console.error('  - startDate:', startDate ? '✓' : '✗');
+      console.error('  - endDate:', endDate ? '✓' : '✗');
+      console.error('  - reason:', reason ? '✓' : '✗');
       return res.status(400).json({ 
         message: 'الرجاء إدخال جميع الحقول المطلوبة' 
       });
@@ -45,6 +68,18 @@ export const createLeave = async (req, res) => {
 
     const days = type === 'half-day' ? 0.5 : calculateWorkingDays(start, end);
 
+    // Handle uploaded PDF attachment
+    let attachments = [];
+    if (req.file) {
+      // Store relative path (URL path) instead of full file path
+      const attachmentUrl = `/uploads/leaves/${req.file.filename}`;
+      attachments.push({
+        url: attachmentUrl,
+        filename: req.file.originalname || req.file.filename
+      });
+      console.log('📎 Leave attachment uploaded:', attachmentUrl, `(${(req.file.size / 1024).toFixed(2)} KB)`);
+    }
+
     const leave = await Leave.create({
       user: userId,
       type,
@@ -52,7 +87,7 @@ export const createLeave = async (req, res) => {
       endDate: end,
       days,
       reason,
-      attachments: attachments || []
+      attachments: attachments
     });
 
     // Update attendance records to mark as on leave

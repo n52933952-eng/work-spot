@@ -12,7 +12,8 @@ const profilesDir = path.join(uploadsDir, 'profiles');
 const facesDir = path.join(uploadsDir, 'faces');
 
 // Create directories
-[uploadsDir, profilesDir, facesDir].forEach(dir => {
+const leavesDir = path.join(uploadsDir, 'leaves');
+[uploadsDir, profilesDir, facesDir, leavesDir].forEach(dir => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
     console.log(`📁 Created directory: ${dir}`);
@@ -69,6 +70,44 @@ export const uploadRegistrationImages = upload.fields([
 
 // Middleware for single image upload
 export const uploadSingleImage = upload.single('image');
+
+// Configure multer for PDF uploads (for leave attachments)
+const pdfStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, leavesDir);
+  },
+  filename: function (req, file, cb) {
+    // Generate unique filename: timestamp_userId_leave_attachment.pdf
+    const userId = req.user?._id || 'user';
+    const timestamp = Date.now();
+    const ext = path.extname(file.originalname) || '.pdf';
+    const filename = `${timestamp}_${userId}_leave_attachment${ext}`;
+    cb(null, filename);
+  }
+});
+
+// File filter for PDFs only
+const pdfFileFilter = (req, file, cb) => {
+  const allowedTypes = ['application/pdf'];
+  
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('فقط ملفات PDF مسموح بها'), false);
+  }
+};
+
+// Configure multer for PDF uploads
+export const uploadPDF = multer({
+  storage: pdfStorage,
+  fileFilter: pdfFileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max file size
+  }
+});
+
+// Middleware for leave attachment (single PDF)
+export const uploadLeaveAttachment = uploadPDF.single('attachment');
 
 export default upload;
 
