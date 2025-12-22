@@ -45,7 +45,7 @@ import {
   Tab,
   TabPanel,
 } from '@chakra-ui/react';
-import { FiCheckCircle, FiXCircle, FiClock, FiCalendar, FiUser, FiFileText, FiTrash2 } from 'react-icons/fi';
+import { FiCheckCircle, FiXCircle, FiClock, FiCalendar, FiUser, FiFileText, FiTrash2, FiDownload, FiPaperclip } from 'react-icons/fi';
 import MainLayout from '../components/Layout/MainLayout';
 import { leavesAPI, BASE_URL } from '../services/api';
 import { useSocket } from '../hooks/useSocket';
@@ -70,6 +70,21 @@ const Leaves = () => {
     if (!profileImage) return null;
     if (profileImage.startsWith('http')) return profileImage;
     return `${BASE_URL}${profileImage}`;
+  };
+
+  // Helper function to get full attachment URL
+  const getAttachmentUrl = (attachment) => {
+    if (!attachment || !attachment.url) return null;
+    if (attachment.url.startsWith('http')) return attachment.url;
+    return `${BASE_URL}${attachment.url}`;
+  };
+
+  // Function to open PDF in new tab
+  const handleViewAttachment = (attachment) => {
+    const url = getAttachmentUrl(attachment);
+    if (url) {
+      window.open(url, '_blank');
+    }
   };
 
   useEffect(() => {
@@ -377,6 +392,7 @@ const Leaves = () => {
                             <Th>من - إلى</Th>
                             <Th>الأيام</Th>
                             <Th>السبب</Th>
+                            <Th>المرفقات</Th>
                             <Th>تاريخ الطلب</Th>
                             <Th>الإجراءات</Th>
                           </Tr>
@@ -423,6 +439,28 @@ const Leaves = () => {
                                   <Text fontSize="sm" maxW="200px" noOfLines={2}>
                                     {leave.reason}
                                   </Text>
+                                </Td>
+                                <Td>
+                                  {leave.attachments && leave.attachments.length > 0 ? (
+                                    <HStack spacing={2}>
+                                      {leave.attachments.map((attachment, index) => (
+                                        <IconButton
+                                          key={index}
+                                          icon={<FiDownload />}
+                                          size="sm"
+                                          colorScheme="blue"
+                                          variant="outline"
+                                          onClick={() => handleViewAttachment(attachment)}
+                                          aria-label={`عرض المرفق ${attachment.filename || index + 1}`}
+                                          title={attachment.filename || 'عرض المرفق'}
+                                        />
+                                      ))}
+                                    </HStack>
+                                  ) : (
+                                    <Text fontSize="sm" color="gray.400">
+                                      لا يوجد
+                                    </Text>
+                                  )}
                                 </Td>
                                 <Td>
                                   <Text fontSize="sm" color="gray.600">
@@ -483,6 +521,7 @@ const Leaves = () => {
                             <Th>من - إلى</Th>
                             <Th>الأيام</Th>
                             <Th>السبب</Th>
+                            <Th>المرفقات</Th>
                             <Th>الحالة</Th>
                             <Th>المراجع</Th>
                             <Th>تاريخ المراجعة</Th>
@@ -540,6 +579,28 @@ const Leaves = () => {
                                       </Text>
                                     )}
                                   </VStack>
+                                </Td>
+                                <Td>
+                                  {leave.attachments && leave.attachments.length > 0 ? (
+                                    <HStack spacing={2}>
+                                      {leave.attachments.map((attachment, index) => (
+                                        <IconButton
+                                          key={index}
+                                          icon={<FiDownload />}
+                                          size="sm"
+                                          colorScheme="blue"
+                                          variant="outline"
+                                          onClick={() => handleViewAttachment(attachment)}
+                                          aria-label={`عرض المرفق ${attachment.filename || index + 1}`}
+                                          title={attachment.filename || 'عرض المرفق'}
+                                        />
+                                      ))}
+                                    </HStack>
+                                  ) : (
+                                    <Text fontSize="sm" color="gray.400">
+                                      لا يوجد
+                                    </Text>
+                                  )}
                                 </Td>
                                 <Td>
                                   <Badge colorScheme={statusInfo.color}>
@@ -630,6 +691,38 @@ const Leaves = () => {
                           {selectedLeave.reason}
                         </Text>
                       </Box>
+                      {selectedLeave.attachments && selectedLeave.attachments.length > 0 && (
+                        <Box>
+                          <Text fontSize="sm" fontWeight="bold" mb={2}>المرفقات:</Text>
+                          <VStack align="stretch" spacing={2}>
+                            {selectedLeave.attachments.map((attachment, index) => (
+                              <HStack
+                                key={index}
+                                p={2}
+                                bg="blue.50"
+                                borderRadius="md"
+                                justify="space-between"
+                              >
+                                <HStack>
+                                  <Icon as={FiPaperclip} color="blue.500" />
+                                  <Text fontSize="sm" color="gray.700">
+                                    {attachment.filename || `مرفق ${index + 1}`}
+                                  </Text>
+                                </HStack>
+                                <Button
+                                  size="sm"
+                                  leftIcon={<FiDownload />}
+                                  colorScheme="blue"
+                                  variant="outline"
+                                  onClick={() => handleViewAttachment(attachment)}
+                                >
+                                  عرض
+                                </Button>
+                              </HStack>
+                            ))}
+                          </VStack>
+                        </Box>
+                      )}
                     </VStack>
                   </Box>
 
