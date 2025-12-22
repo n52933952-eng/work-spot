@@ -47,7 +47,7 @@ import {
 } from '@chakra-ui/react';
 import { FiCheckCircle, FiXCircle, FiClock, FiCalendar, FiUser, FiFileText, FiTrash2, FiDownload, FiPaperclip } from 'react-icons/fi';
 import MainLayout from '../components/Layout/MainLayout';
-import { leavesAPI, BASE_URL, API_BASE_URL } from '../services/api';
+import { leavesAPI, BASE_URL, API_BASE_URL, downloadFile } from '../services/api';
 import { useSocket } from '../hooks/useSocket';
 
 const Leaves = () => {
@@ -72,50 +72,39 @@ const Leaves = () => {
     return `${BASE_URL}${profileImage}`;
   };
 
-  // Helper function to get full attachment URL
-  const getAttachmentUrl = (attachment) => {
-    if (!attachment || !attachment.url) return null;
-    if (attachment.url.startsWith('http')) return attachment.url;
-    
-    // Extract filename from URL path (e.g., /uploads/leaves/filename.pdf)
-    const filename = attachment.url.split('/').pop();
-    
-    // Use the download endpoint instead of direct file URL
-    return `${API_BASE_URL}/leaves/attachment/${filename}`;
+  // Helper function to download blob (same as Reports.jsx)
+  const downloadBlob = (blob, filename) => {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
   };
 
-  // Function to download PDF attachment
+  // Function to download PDF attachment (using the same approach as Reports)
   const handleViewAttachment = async (attachment) => {
-    const url = getAttachmentUrl(attachment);
-    if (!url) return;
+    if (!attachment || !attachment.url) return;
 
     try {
-      // Use a simple approach: create a download link directly to the URL
-      // This avoids blob conversion which might corrupt the file
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = attachment.filename || 'attachment.pdf';
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.style.display = 'none';
+      // Extract filename from URL path (e.g., /uploads/leaves/filename.pdf)
+      const filename = attachment.url.split('/').pop();
       
-      // Append to body
-      document.body.appendChild(link);
+      // Use the download endpoint
+      const endpoint = `/leaves/attachment/${filename}`;
       
-      // Trigger click
-      link.click();
+      // Use the same downloadFile function that works in Reports
+      const blob = await downloadFile(endpoint);
       
-      // Clean up immediately
-      setTimeout(() => {
-        if (document.body.contains(link)) {
-          document.body.removeChild(link);
-        }
-      }, 100);
+      // Download the blob using the same method as Reports
+      downloadBlob(blob, attachment.filename || filename || 'attachment.pdf');
       
       // Show success message
       toast({
         title: 'تم التحميل',
-        description: 'جاري تحميل الملف...',
+        description: 'تم تحميل الملف بنجاح',
         status: 'success',
         duration: 2000,
       });
@@ -124,7 +113,7 @@ const Leaves = () => {
       console.error('Error downloading attachment:', error);
       toast({
         title: 'خطأ',
-        description: 'فشل تحميل الملف',
+        description: error.message || 'فشل تحميل الملف',
         status: 'error',
         duration: 3000,
       });
