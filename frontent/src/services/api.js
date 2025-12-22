@@ -1,6 +1,6 @@
 // API configuration for admin panel
 // Set VITE_API_URL in .env file or use default server URL
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://work-spot-6.onrender.com/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://work-spot-6.onrender.com/api';
 
 // Base URL without /api for static assets (images, etc.)
 export const BASE_URL = API_BASE_URL.replace('/api', '');
@@ -73,10 +73,6 @@ export const dashboardAPI = {
     const queryString = new URLSearchParams(params).toString();
     return apiCall(`/dashboard/employees?${queryString}`);
   },
-  updateEmployee: (employeeId, data) => apiCall(`/dashboard/employees/${employeeId}`, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  }),
 };
 
 // Auth API calls

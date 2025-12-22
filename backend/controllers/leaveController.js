@@ -2,12 +2,6 @@ import Leave from '../modles/Leave.js';
 import Attendance from '../modles/Attendance.js';
 import User from '../modles/User.js';
 import { io, getRecipientSockedId } from '../socket/socket.js'; // Import Socket.io
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Calculate days between two dates (excluding weekends)
 const calculateWorkingDays = (startDate, endDate) => {
@@ -38,26 +32,13 @@ export const createLeave = async (req, res) => {
       mimetype: req.file.mimetype,
       size: req.file.size
     } : 'No file');
-    console.log('  - req.user:', req.user ? { _id: req.user._id, role: req.user.role } : 'No user');
-    
-    const { type, startDate, endDate, reason } = req.body;
+
+    const { type, startDate, endDate, reason, attachments } = req.body;
     const userId = req.user.role === 'admin' || req.user.role === 'hr' 
       ? req.body.userId || req.user._id 
       : req.user._id;
 
-    console.log('📋 [Backend] Extracted fields:');
-    console.log('  - type:', type);
-    console.log('  - startDate:', startDate);
-    console.log('  - endDate:', endDate);
-    console.log('  - reason:', reason);
-    console.log('  - userId:', userId);
-
     if (!type || !startDate || !endDate || !reason) {
-      console.error('❌ [Backend] Missing required fields:');
-      console.error('  - type:', type ? '✓' : '✗');
-      console.error('  - startDate:', startDate ? '✓' : '✗');
-      console.error('  - endDate:', endDate ? '✓' : '✗');
-      console.error('  - reason:', reason ? '✓' : '✗');
       return res.status(400).json({ 
         message: 'الرجاء إدخال جميع الحقول المطلوبة' 
       });
@@ -74,16 +55,15 @@ export const createLeave = async (req, res) => {
 
     const days = type === 'half-day' ? 0.5 : calculateWorkingDays(start, end);
 
-    // Handle uploaded PDF attachment
-    let attachments = [];
+    // Handle uploaded PDF file
+    const attachmentsArray = attachments || [];
     if (req.file) {
-      // Store relative path (URL path) instead of full file path
-      const attachmentUrl = `/uploads/leaves/${req.file.filename}`;
-      attachments.push({
-        url: attachmentUrl,
+      const fileUrl = `/uploads/leaves/${req.file.filename}`;
+      attachmentsArray.push({
+        url: fileUrl,
         filename: req.file.originalname || req.file.filename
       });
-      console.log('📎 Leave attachment uploaded:', attachmentUrl, `(${(req.file.size / 1024).toFixed(2)} KB)`);
+      console.log('📎 [Backend] PDF attachment added:', fileUrl);
     }
 
     const leave = await Leave.create({
@@ -93,7 +73,7 @@ export const createLeave = async (req, res) => {
       endDate: end,
       days,
       reason,
-      attachments: attachments
+      attachments: attachmentsArray
     });
 
     // Update attendance records to mark as on leave
@@ -131,32 +111,6 @@ export const createLeave = async (req, res) => {
     console.error('Create leave error:', error);
     res.status(500).json({ 
       message: 'حدث خطأ أثناء إنشاء طلب الإجازة',
-      error: error.message 
-    });
-  }
-};
-
-// Download leave attachment
-export const downloadAttachment = async (req, res) => {
-  try {
-    const { filename } = req.params;
-    const filePath = path.join(__dirname, '../public/uploads/leaves', filename);
-    
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ message: 'الملف غير موجود' });
-    }
-    
-    // Set headers for download
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.setHeader('Content-Type', 'application/pdf');
-    
-    // Send the file
-    res.sendFile(filePath);
-  } catch (error) {
-    console.error('Download attachment error:', error);
-    res.status(500).json({ 
-      message: 'حدث خطأ أثناء تحميل الملف',
       error: error.message 
     });
   }

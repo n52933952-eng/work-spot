@@ -189,7 +189,7 @@ const EmployeeApproval = () => {
               color="gray.700"
               fontSize={{ base: "lg", md: "xl", lg: "2xl" }}
             >
-              الموافقة لموظف جديد
+              موافقة الموظفين الجدد
             </Heading>
             <Text 
               fontSize={{ base: "xs", md: "sm" }} 

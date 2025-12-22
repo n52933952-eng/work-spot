@@ -31,8 +31,14 @@ app.use(express.json({ limit: '50mb' }))
 app.use(express.urlencoded({ limit: '50mb', extended: true }))
 app.use(cookieParser())
 
-// Serve static files from public folder (for uploaded images and PDFs)
-app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')))
+// Serve static files from public folder (for uploaded images)
+app.use('/uploads', (req, res, next) => {
+  // Set Content-Type for PDF files
+  if (req.path.endsWith('.pdf')) {
+    res.type('application/pdf');
+  }
+  next();
+}, express.static(path.join(__dirname, 'public/uploads')))
 console.log('📁 Serving static files from:', path.join(__dirname, 'public/uploads'))
 
 // CORS configuration - allow localhost for development

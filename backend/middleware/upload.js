@@ -10,9 +10,9 @@ const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, '../public/uploads');
 const profilesDir = path.join(uploadsDir, 'profiles');
 const facesDir = path.join(uploadsDir, 'faces');
+const leavesDir = path.join(uploadsDir, 'leaves');
 
 // Create directories
-const leavesDir = path.join(uploadsDir, 'leaves');
 [uploadsDir, profilesDir, facesDir, leavesDir].forEach(dir => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -71,7 +71,7 @@ export const uploadRegistrationImages = upload.fields([
 // Middleware for single image upload
 export const uploadSingleImage = upload.single('image');
 
-// Configure multer for PDF uploads (for leave attachments)
+// Configure multer for PDF uploads (leaves attachments)
 const pdfStorage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, leavesDir);
@@ -86,18 +86,14 @@ const pdfStorage = multer.diskStorage({
   }
 });
 
-// File filter for PDFs only
 const pdfFileFilter = (req, file, cb) => {
-  const allowedTypes = ['application/pdf'];
-  
-  if (allowedTypes.includes(file.mimetype)) {
+  if (file.mimetype === 'application/pdf') {
     cb(null, true);
   } else {
-    cb(new Error('فقط ملفات PDF مسموح بها'), false);
+    cb(new Error('Only PDF files are allowed'), false);
   }
 };
 
-// Configure multer for PDF uploads
 export const uploadPDF = multer({
   storage: pdfStorage,
   fileFilter: pdfFileFilter,
@@ -106,7 +102,7 @@ export const uploadPDF = multer({
   }
 });
 
-// Middleware for leave attachment (single PDF)
+// Middleware for leave attachment (PDF)
 export const uploadLeaveAttachment = uploadPDF.single('attachment');
 
 export default upload;

@@ -8,7 +8,6 @@ import Leaves from './pages/Leaves';
 import Announcements from './pages/Announcements';
 import Salary from './pages/Salary';
 import EmployeeApproval from './pages/EmployeeApproval';
-import Employees from './pages/Employees';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -107,14 +106,6 @@ const App = () => {
         element={
           <ProtectedRoute>
             <EmployeeApproval />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/employees"
-        element={
-          <ProtectedRoute>
-            <Employees />
           </ProtectedRoute>
         }
       />

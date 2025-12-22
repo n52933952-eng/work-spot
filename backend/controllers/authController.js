@@ -108,15 +108,19 @@ export const completeRegistration = async (req, res) => {
     console.log(`⏱️ Duplicate checks completed in ${Date.now() - duplicateCheckStartTime}ms`);
 
     if (existingUser) {
+      console.log('❌ Duplicate user found:', existingUser.email || existingUser.employeeNumber);
       return res.status(400).json({ 
         message: 'البريد الإلكتروني أو رقم الموظف موجود مسبقاً' 
       });
     }
     
+    // Check for duplicate fingerprint BEFORE face check
+    // This prevents same device from being used by multiple users
     if (existingFingerprint) {
-      return res.status(400).json({ 
-        message: 'هذا الجهاز مستخدم بالفعل. يرجى استخدام جهاز آخر أو تسجيل الدخول بالحساب المسجل على هذا الجهاز.' 
-      });
+      console.log('❌ Duplicate fingerprint found for device');
+      console.log('   Existing user:', existingFingerprint.email || existingFingerprint.employeeNumber);
+      // Don't return here - we need to check if it's the same person or different person
+      // Continue to face similarity check below
     }
 
     // Generate faceId function (same as frontend)
@@ -174,27 +178,37 @@ export const completeRegistration = async (req, res) => {
       console.log('✅ Found existing user with same fingerprintPublicKey!');
       console.log('⚠️ Duplicate fingerprintPublicKey detected!');
       console.log(`   Existing user: ${existingFingerprintUser.email || existingFingerprintUser.fullName}`);
+      console.log(`   Existing user ID: ${existingFingerprintUser._id}`);
+      console.log(`   New registration email: ${email}, employeeNumber: ${employeeNumber}`);
       
+      // FIRST: Check if it's the SAME user (same email/employeeNumber) trying to register again
+      const isSameUser = existingFingerprintUser.email === email || 
+                        existingFingerprintUser.employeeNumber === employeeNumber;
+      
+      if (isSameUser) {
+        console.log('   ✅ Same user detected (email/employeeNumber match) - BLOCKING duplicate registration');
+        return res.status(400).json({ 
+          message: 'أنت مسجل بالفعل على هذا الجهاز. يرجى تسجيل الدخول بدلاً من التسجيل مرة أخرى.' 
+        });
+      }
+      
+      // SECOND: If different user, check face to see if it's same person or different person
       // IMPORTANT: Check BOTH fingerprint AND face to determine if same person or different person
       // Step 1: Check face similarity (if landmarks available)
       if (normalizedLandmarks && existingFingerprintUser.faceLandmarks) {
         const similarity = compareFaces(normalizedLandmarks, existingFingerprintUser.faceLandmarks);
         console.log(`   Face similarity check: ${(similarity * 100).toFixed(1)}%`);
         
-        // Increased threshold from 90% to 96% to prevent false matches between different people
-        // 96% is very strict - only block if we're VERY sure it's the same person
-        // This prevents false positives when different people use the same device
-        if (similarity >= 0.96) {
-          // Same person trying to register again on same device
-          console.log(`   ✅ Same person detected (face similarity: ${(similarity * 100).toFixed(1)}%)`);
+        // If similarity >= 90%, it's likely the same person (even if different email)
+        if (similarity >= 0.90) {
+          // Same person trying to register again (maybe with different email)
+          console.log(`   ✅ Same person detected (face similarity: ${(similarity * 100).toFixed(1)}% >= 90%)`);
           return res.status(400).json({ 
             message: 'أنت مسجل بالفعل على هذا الجهاز. يرجى تسجيل الدخول بدلاً من التسجيل مرة أخرى.' 
           });
         } else {
-          // Different person (face similarity < 96%) on same device - BLOCKED
-          // Even if similarity is 90-95%, if fingerprintPublicKey matches, it's the same device
-          // But we're being lenient: only block if similarity >= 96% (very sure it's same person)
-          console.log(`   ❌ Different person detected (face similarity: ${(similarity * 100).toFixed(1)}% < 96%)`);
+          // Different person (face similarity < 90%) on same device - BLOCKED
+          console.log(`   ❌ Different person detected (face similarity: ${(similarity * 100).toFixed(1)}% < 90%)`);
           return res.status(400).json({ 
             message: 'هذا الجهاز مستخدم بالفعل. يرجى استخدام جهاز آخر أو تسجيل الدخول بالحساب المسجل على هذا الجهاز.' 
           });
@@ -218,8 +232,8 @@ export const completeRegistration = async (req, res) => {
         }
       }
       
-      // Step 3: If no face data available, assume different person (safety: block registration)
-      // This should rarely happen if face capture is working properly
+      // Step 3: If no face data available, block registration (safety)
+      // This prevents multiple users on same device
       console.log('   ⚠️ No face data available for comparison - blocking registration (safety)');
       return res.status(400).json({ 
         message: 'هذا الجهاز مستخدم بالفعل. يرجى استخدام جهاز آخر أو تسجيل الدخول بالحساب المسجل على هذا الجهاز.' 
@@ -1037,6 +1051,10 @@ export const loginWithBiometric = async (req, res) => {
         });
       }
 
+      // Device binding ENABLED for production security
+      // Fixed: Now using stored key from AsyncStorage instead of regenerating
+      const DEVICE_BINDING_ENABLED = true; // Device verification is ACTIVE
+      
       // FACE LOGIN: Priority order - Embeddings (NEW) > Landmarks (FALLBACK)
       // Priority 1: Use faceEmbedding directly (generated on-device) - MOST ACCURATE
       if (hasFaceEmbedding) {
@@ -1083,56 +1101,129 @@ export const loginWithBiometric = async (req, res) => {
             user = match.user;
             console.log(`✅ Found user by face embedding: ${(match.similarity * 100).toFixed(2)}% similarity`);
             
-            // Device binding ENABLED for production security
-            // Fixed: Now using stored key from AsyncStorage instead of regenerating
-            const DEVICE_BINDING_ENABLED = true; // Device verification is ACTIVE
-            
-            // SECURITY: If user has a registered device, device verification is REQUIRED
-            if (DEVICE_BINDING_ENABLED && user.fingerprintData) {
-              if (!hasFingerprint || !fingerprintPublicKey) {
-                console.log('⚠️ Security: User has registered device but no fingerprint provided');
-                console.log('📱 User registered device (first 30 chars):', user.fingerprintData.substring(0, 30) + '...');
-                return res.status(403).json({ 
-                  message: 'يرجى تسجيل الدخول من الجهاز المسجل لديك أو استخدام البصمة للتحقق' 
-                });
-              }
+            // SECURITY: Device binding is OPTIONAL for face-only login
+            // If fingerprint is provided, verify it matches (prevents friend from logging in from your device)
+            // If fingerprint is NOT provided, allow login (face-only login is allowed)
+            if (DEVICE_BINDING_ENABLED && user.fingerprintData && hasFingerprint && fingerprintPublicKey) {
+              // Fingerprint was provided - verify it matches registered device
               if (user.fingerprintData !== fingerprintPublicKey) {
                 console.log('⚠️ Security: Fingerprint mismatch (face matched but wrong device)');
                 console.log('📱 Registered device length:', user.fingerprintData.length);
                 console.log('📱 Current device length:', fingerprintPublicKey.length);
-                console.log('📱 Registered device (full):', user.fingerprintData);
-                console.log('📱 Current device (full):', fingerprintPublicKey);
-                console.log('📱 String comparison:', user.fingerprintData === fingerprintPublicKey ? 'YES ✅' : 'NO ❌');
-                console.log('📱 Type check:');
-                console.log('   - Registered device type:', typeof user.fingerprintData);
-                console.log('   - Current device type:', typeof fingerprintPublicKey);
-                
-                // Check character-by-character where they differ
-                let diffIndex = -1;
-                for (let i = 0; i < Math.min(user.fingerprintData.length, fingerprintPublicKey.length); i++) {
-                  if (user.fingerprintData[i] !== fingerprintPublicKey[i]) {
-                    diffIndex = i;
-                    break;
-                  }
-                }
-                if (diffIndex >= 0) {
-                  console.log('📱 First difference at index:', diffIndex);
-                  console.log('   - Registered:', user.fingerprintData.substring(Math.max(0, diffIndex - 10), diffIndex + 20));
-                  console.log('   - Current:', fingerprintPublicKey.substring(Math.max(0, diffIndex - 10), diffIndex + 20));
-                } else if (user.fingerprintData.length !== fingerprintPublicKey.length) {
-                  console.log('📱 Strings are identical but different lengths!');
-                }
-                
-                console.log('💡 Solution: User needs to re-register to update device fingerprint');
+                console.log('📱 This prevents friends from logging in from your device');
                 return res.status(403).json({ 
                   message: 'هذا الجهاز غير مسجل. يرجى إعادة التسجيل من هذا الجهاز أو استخدام جهازك المسجل.' 
                 });
               }
               console.log('✅ Fingerprint verified - user logging in from registered device');
-            } else if (user.fingerprintData && !DEVICE_BINDING_ENABLED) {
-              console.log('⚠️ Device binding DISABLED - skipping device verification (embedding path)');
-              console.log('📱 User has registered device but verification is disabled for debugging');
+            } else if (DEVICE_BINDING_ENABLED && user.fingerprintData && !hasFingerprint) {
+              // User has registered device but no fingerprint provided - ALLOW face-only login
+              console.log('⚠️ Face-only login: User has registered device but no fingerprint provided');
+              console.log('✅ Allowing face-only login (device binding optional for face login)');
+            } else {
+              console.log('✅ Face login: No device binding required');
             }
+          } else {
+            console.log('❌ No user found with matching face embedding');
+            console.log('🔍 DIAGNOSTIC: Checking all users with faceEmbedding for debugging...');
+            
+            // DIAGNOSTIC: Show all similarities even below threshold
+            if (allUsers.length > 0) {
+              console.log('📊 All users checked:');
+              for (const u of allUsers) {
+                const sim = cosineSimilarity(faceEmbedding, u.faceEmbedding);
+                console.log(`   - ${u.email || u.employeeNumber || u._id}: ${(sim * 100).toFixed(2)}% similarity`);
+              }
+            }
+            
+            // FALLBACK: Try to find user by faceId if faceEmbedding failed
+            if (faceId) {
+              console.log('🔄 FALLBACK: Trying to find user by faceId:', faceId);
+              console.log('🔍 Searching for user with faceId:', faceId);
+              
+              // First, check if ANY user has this faceId (for debugging)
+              const anyUserWithFaceId = await User.findOne({ faceId: faceId });
+              if (anyUserWithFaceId) {
+                console.log('🔍 Found user with faceId (any status):', anyUserWithFaceId.email || anyUserWithFaceId.employeeNumber);
+                console.log('   - isActive:', anyUserWithFaceId.isActive);
+                console.log('   - faceIdEnabled:', anyUserWithFaceId.faceIdEnabled);
+                console.log('   - approvalStatus:', anyUserWithFaceId.approvalStatus);
+              } else {
+                console.log('❌ No user found with faceId:', faceId);
+                console.log('🔍 Checking all users with faceId for debugging...');
+                const allUsersWithFaceId = await User.find({ faceId: { $exists: true, $ne: null } })
+                  .select('faceId email employeeNumber isActive faceIdEnabled')
+                  .limit(10);
+                console.log(`📋 Found ${allUsersWithFaceId.length} users with faceId in database`);
+                allUsersWithFaceId.forEach(u => {
+                  console.log(`   - faceId: ${u.faceId}, email: ${u.email || u.employeeNumber}, isActive: ${u.isActive}, faceIdEnabled: ${u.faceIdEnabled}`);
+                });
+              }
+              
+              const userByFaceId = await User.findOne({ 
+                faceId: faceId,
+                isActive: true,
+                faceIdEnabled: true
+              }).select('_id email employeeNumber fullName faceIdEnabled fingerprintData faceId');
+              
+              if (userByFaceId) {
+                console.log('✅ Found user by faceId (fallback):', userByFaceId.email || userByFaceId.employeeNumber);
+                console.log('   - faceId:', userByFaceId.faceId);
+                console.log('   - has fingerprintData:', !!userByFaceId.fingerprintData);
+                
+                // SECURITY: Device binding is OPTIONAL for face-only login (same as faceEmbedding path)
+                // If fingerprint is provided, verify it matches (prevents friend from logging in from your device)
+                // If fingerprint is NOT provided, allow login (face-only login is allowed)
+                if (DEVICE_BINDING_ENABLED && userByFaceId.fingerprintData && hasFingerprint && fingerprintPublicKey) {
+                  console.log('🔒 Device binding check: Fingerprint provided, verifying...');
+                  console.log('🔒 Comparing fingerprints:');
+                  console.log('   - Registered device length:', userByFaceId.fingerprintData.length);
+                  console.log('   - Current device length:', fingerprintPublicKey.length);
+                  console.log('   - Match:', userByFaceId.fingerprintData === fingerprintPublicKey ? 'YES ✅' : 'NO ❌');
+                  
+                  if (userByFaceId.fingerprintData !== fingerprintPublicKey) {
+                    console.log('❌ Device binding failed: Fingerprint mismatch');
+                    console.log('📱 This prevents friends from logging in from your device');
+                    return res.status(403).json({ 
+                      message: 'هذا الجهاز غير مسجل. يرجى إعادة التسجيل من هذا الجهاز أو استخدام جهازك المسجل.' 
+                    });
+                  }
+                  console.log('✅ Device binding verified');
+                } else if (DEVICE_BINDING_ENABLED && userByFaceId.fingerprintData && !hasFingerprint) {
+                  // User has registered device but no fingerprint provided - ALLOW face-only login
+                  console.log('⚠️ Face-only login (fallback): User has registered device but no fingerprint provided');
+                  console.log('✅ Allowing face-only login (device binding optional for face login)');
+                } else {
+                  console.log('✅ Face login (fallback): No device binding required');
+                }
+                
+                // Use faceId match as user
+                user = userByFaceId;
+                console.log('✅ Using faceId match (fallback) - faceEmbedding similarity was too low');
+                
+                // Continue to approval status check and token generation (same as faceEmbedding match)
+                // This will be handled after the if/else block
+              } else {
+                console.log('❌ No user found with matching faceId (with isActive=true and faceIdEnabled=true)');
+                console.log('💡 Possible reasons:');
+                console.log('   1. User is not active (isActive=false)');
+                console.log('   2. Face ID is disabled (faceIdEnabled=false)');
+                console.log('   3. Face ID does not exist in database');
+                return res.status(401).json({ 
+                  message: 'الوجه غير مسجل أو غير صحيح' 
+                });
+              }
+            } else {
+              console.log('❌ No faceId provided for fallback');
+              return res.status(401).json({ 
+                message: 'الوجه غير مسجل أو غير صحيح' 
+              });
+            }
+          }
+          
+          // COMMON CODE: Handle user found by faceEmbedding OR faceId fallback
+          if (user) {
+            console.log('✅ User found (by faceEmbedding or faceId fallback):', user.email || user.employeeNumber);
             
             // Verify face is enabled
             if (!user.faceIdEnabled) {
@@ -1182,11 +1273,6 @@ export const loginWithBiometric = async (req, res) => {
                 faceId: user.faceId
               },
               token
-            });
-          } else {
-            console.log('❌ No user found with matching face embedding');
-            return res.status(401).json({ 
-              message: 'الوجه غير مسجل أو غير صحيح' 
             });
           }
         } catch (error) {
@@ -1255,28 +1341,27 @@ export const loginWithBiometric = async (req, res) => {
           user = bestMatch;
           console.log(`✅ Found user by face landmarks: ${(bestSimilarity * 100).toFixed(2)}% similarity`);
           
-          // TEMPORARY: Device binding disabled (using same flag as embedding path above)
-          // SECURITY: If user has a registered device, device verification is REQUIRED
-          // This prevents users from logging in from other people's devices
-          if (DEVICE_BINDING_ENABLED && user.fingerprintData) {
-            if (!hasFingerprint || !fingerprintPublicKey) {
-              console.log('⚠️ Security: User has registered device but no fingerprint provided');
-              return res.status(403).json({ 
-                message: 'يرجى تسجيل الدخول من الجهاز المسجل لديك أو استخدام البصمة للتحقق' 
-              });
-            }
+          // SECURITY: Device binding is OPTIONAL for face-only login (same as embedding path)
+          // If fingerprint is provided, verify it matches (prevents friend from logging in from your device)
+          // If fingerprint is NOT provided, allow login (face-only login is allowed)
+          if (DEVICE_BINDING_ENABLED && user.fingerprintData && hasFingerprint && fingerprintPublicKey) {
+            // Fingerprint was provided - verify it matches registered device
             if (user.fingerprintData !== fingerprintPublicKey) {
               console.log('⚠️ Security: Fingerprint mismatch (face matched but wrong device)');
               console.log('⚠️ Security: User registered device:', user.fingerprintData.substring(0, 20) + '...');
               console.log('⚠️ Security: Current device:', fingerprintPublicKey.substring(0, 20) + '...');
+              console.log('📱 This prevents friends from logging in from your device');
               return res.status(403).json({ 
                 message: 'البصمة غير متطابقة مع المستخدم المسجل. يرجى تسجيل الدخول من جهازك المسجل.' 
               });
             }
             console.log('✅ Fingerprint verified - user logging in from registered device');
-          } else if (user.fingerprintData && !DEVICE_BINDING_ENABLED) {
-            console.log('⚠️ Device binding DISABLED - skipping device verification');
-            console.log('📱 User has registered device but verification is disabled for debugging');
+          } else if (DEVICE_BINDING_ENABLED && user.fingerprintData && !hasFingerprint) {
+            // User has registered device but no fingerprint provided - ALLOW face-only login
+            console.log('⚠️ Face-only login (landmarks): User has registered device but no fingerprint provided');
+            console.log('✅ Allowing face-only login (device binding optional for face login)');
+          } else {
+            console.log('✅ Face login (landmarks): No device binding required');
           }
           
           // Verify face is enabled
