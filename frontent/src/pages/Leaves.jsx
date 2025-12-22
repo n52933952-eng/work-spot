@@ -79,10 +79,43 @@ const Leaves = () => {
     return `${BASE_URL}${attachment.url}`;
   };
 
-  // Function to open PDF in new tab
-  const handleViewAttachment = (attachment) => {
+  // Function to download PDF attachment
+  const handleViewAttachment = async (attachment) => {
     const url = getAttachmentUrl(attachment);
-    if (url) {
+    if (!url) return;
+
+    try {
+      // Fetch the file as a blob to handle cross-origin downloads
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error('فشل تحميل الملف');
+      }
+      
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      
+      // Create a temporary anchor element to trigger download
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = attachment.filename || 'attachment.pdf';
+      link.style.display = 'none';
+      
+      // Append to body, click, then remove
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up the blob URL
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error('Error downloading attachment:', error);
+      toast({
+        title: 'خطأ',
+        description: 'فشل تحميل الملف. جاري فتحه في نافذة جديدة...',
+        status: 'warning',
+        duration: 3000,
+      });
+      // Fallback: open in new tab if download fails
       window.open(url, '_blank');
     }
   };
