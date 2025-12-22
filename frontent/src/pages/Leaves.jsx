@@ -88,7 +88,7 @@ const Leaves = () => {
       // Get token from localStorage for authenticated requests
       const token = localStorage.getItem('adminToken');
       
-      // Fetch the file as a blob with authentication
+      // Fetch the file as an array buffer to preserve binary data
       const headers = {};
       if (token && token !== 'admin-authenticated') {
         headers['Authorization'] = `Bearer ${token}`;
@@ -97,16 +97,19 @@ const Leaves = () => {
       const response = await fetch(url, {
         method: 'GET',
         headers: headers,
-        credentials: 'include', // Include cookies if any
+        credentials: 'include',
       });
       
       if (!response.ok) {
         throw new Error('فشل تحميل الملف');
       }
       
-      const blob = await response.blob();
+      // Get the file as array buffer to preserve binary data
+      const arrayBuffer = await response.arrayBuffer();
       
-      // Check if browser supports download attribute properly
+      // Create blob from array buffer with correct MIME type
+      const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+      
       // Create blob URL
       const blobUrl = window.URL.createObjectURL(blob);
       
@@ -116,22 +119,24 @@ const Leaves = () => {
       link.download = attachment.filename || 'attachment.pdf';
       link.style.display = 'none';
       
-      // Force download by setting both download attribute and using a data URL approach
+      // Append to body
       document.body.appendChild(link);
       
-      // Trigger click immediately
+      // Trigger click
       link.click();
       
-      // Clean up after a short delay
+      // Clean up after a delay
       setTimeout(() => {
-        document.body.removeChild(link);
+        if (document.body.contains(link)) {
+          document.body.removeChild(link);
+        }
         window.URL.revokeObjectURL(blobUrl);
-      }, 100);
+      }, 200);
       
       // Show success message
       toast({
         title: 'تم التحميل',
-        description: 'جاري تحميل الملف...',
+        description: 'تم تحميل الملف بنجاح',
         status: 'success',
         duration: 2000,
       });
