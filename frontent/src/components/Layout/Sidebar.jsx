@@ -37,12 +37,13 @@ const Sidebar = ({ isMobile, isOpen, onClose, onOpen }) => {
   const btnRef = useRef();
 
   const menuItems = [
-    { path: '/dashboard', label: 'الموظفين', icon: FiUsers },
+    { path: '/dashboard', label: 'لوحة التحكم', icon: FiUsers },
+    { path: '/employees', label: 'إدارة الموظفين', icon: FiUsers },
     { path: '/employee-approval', label: 'موافقة الموظفين', icon: FiUserCheck },
     { path: '/salary', label: 'الرواتب', icon: FiDollarSign },
     { path: '/reports', label: 'التقارير', icon: FiFileText },
     { path: '/points', label: 'النقاط', icon: FiAward },
-    { path: '/holidays', label: 'العطل', icon: FiCalendar },
+    { path: '/holidays', label: 'العطل الرسمية', icon: FiCalendar },
     { path: '/leaves', label: 'الإجازات الشخصية', icon: FiClock },
     { path: '/announcements', label: 'الإعلانات', icon: FiBell },
   ];
@@ -81,12 +82,23 @@ const Sidebar = ({ isMobile, isOpen, onClose, onOpen }) => {
         spacing={{ base: 1, md: 2 }} 
         flex={1} 
         overflowY="auto"
+        pr={2}
         css={{
           '&::-webkit-scrollbar': {
-            display: 'none'
+            width: '6px',
           },
-          '-ms-overflow-style': 'none',
-          'scrollbar-width': 'none'
+          '&::-webkit-scrollbar-track': {
+            background: 'transparent',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            background: 'rgba(255, 255, 255, 0.3)',
+            borderRadius: '10px',
+            '&:hover': {
+              background: 'rgba(255, 255, 255, 0.5)',
+            },
+          },
+          'scrollbar-width': 'thin',
+          'scrollbar-color': 'rgba(255, 255, 255, 0.3) transparent',
         }}
       >
         {menuItems.map((item) => (
@@ -170,10 +182,20 @@ const Sidebar = ({ isMobile, isOpen, onClose, onOpen }) => {
               pt={{ base: 4, md: 6 }}
               css={{
                 '&::-webkit-scrollbar': {
-                  display: 'none'
+                  width: '6px',
                 },
-                '-ms-overflow-style': 'none',
-                'scrollbar-width': 'none'
+                '&::-webkit-scrollbar-track': {
+                  background: 'transparent',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  background: 'rgba(255, 255, 255, 0.3)',
+                  borderRadius: '10px',
+                  '&:hover': {
+                    background: 'rgba(255, 255, 255, 0.5)',
+                  },
+                },
+                'scrollbar-width': 'thin',
+                'scrollbar-color': 'rgba(255, 255, 255, 0.3) transparent',
               }}
             >
               <SidebarContent />

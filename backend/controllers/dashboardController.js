@@ -189,18 +189,73 @@ export const getAllEmployees = async (req, res) => {
     const { department, isActive, role } = req.query;
     
     const query = {};
+    
+    // ALWAYS exclude admin users from employee list - NEVER show admin users
+    // If a specific role filter is provided (and it's not admin), use that role
+    if (role && role !== 'admin') {
+      query.role = role; // Filter by specific role (employee, hr, manager)
+    } else {
+      // No role filter or invalid filter - exclude admin and show all other roles
+      query.role = { $ne: 'admin' };
+    }
+    
     if (department) query.department = department;
     if (isActive !== undefined) query.isActive = isActive === 'true';
-    if (role) query.role = role;
+
+    // Debug log to verify the query
+    console.log('🔍 getAllEmployees query:', JSON.stringify(query));
+    console.log('🚫 Excluding admin users - query.role:', query.role);
 
     const employees = await User.find(query)
       .select('-password')
       .populate('branch', 'name address')
       .sort({ createdAt: -1 });
 
-    res.status(200).json({ employees });
+    // Double-check: Filter out any admin users that might have slipped through (shouldn't happen)
+    const filteredEmployees = employees.filter(emp => emp.role !== 'admin');
+    
+    console.log(`✅ Found ${employees.length} employees, after admin filter: ${filteredEmployees.length}`);
+
+    res.status(200).json({ employees: filteredEmployees });
   } catch (error) {
     console.error('Get all employees error:', error);
+    res.status(500).json({ 
+      message: 'حدث خطأ',
+      error: error.message 
+    });
+  }
+};
+
+// Update employee (for admin/hr/manager)
+export const updateEmployee = async (req, res) => {
+  try {
+    // Only admin/hr/manager can update employees
+    if (!['admin', 'hr', 'manager'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'غير مصرح لك' });
+    }
+
+    const { userId } = req.params;
+    const { position, department, role, isActive } = req.body;
+
+    const employee = await User.findById(userId);
+    if (!employee) {
+      return res.status(404).json({ message: 'الموظف غير موجود' });
+    }
+
+    // Update fields if provided
+    if (position !== undefined) employee.position = position;
+    if (department !== undefined) employee.department = department;
+    if (role !== undefined) employee.role = role;
+    if (isActive !== undefined) employee.isActive = isActive;
+
+    await employee.save();
+
+    res.status(200).json({ 
+      message: 'تم تحديث معلومات الموظف بنجاح',
+      employee: employee.toObject({ transform: (doc, ret) => { delete ret.password; return ret; } })
+    });
+  } catch (error) {
+    console.error('Update employee error:', error);
     res.status(500).json({ 
       message: 'حدث خطأ',
       error: error.message 
