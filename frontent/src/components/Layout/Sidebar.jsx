@@ -39,7 +39,7 @@ const Sidebar = ({ isMobile, isOpen, onClose, onOpen }) => {
   const menuItems = [
     { path: '/dashboard', label: 'لوحة التحكم', icon: FiUsers },
     { path: '/employees', label: 'إدارة الموظفين', icon: FiUsers },
-    { path: '/employee-approval', label: 'موافقة الموظفين', icon: FiUserCheck },
+    { path: '/employee-approval', label: 'الموافقة لموظف جديد', icon: FiUserCheck },
     { path: '/salary', label: 'الرواتب', icon: FiDollarSign },
     { path: '/reports', label: 'التقارير', icon: FiFileText },
     { path: '/points', label: 'النقاط', icon: FiAward },

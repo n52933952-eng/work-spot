@@ -41,8 +41,12 @@ export const getDashboard = async (req, res) => {
       location: a.checkInLocation
     }));
 
-    // Get all users count
-    const totalEmployees = await User.countDocuments({ role: 'employee', isActive: true });
+    // Get all users count - only count approved employees
+    const totalEmployees = await User.countDocuments({ 
+      role: 'employee', 
+      isActive: true,
+      approvalStatus: 'approved'
+    });
     const absentEmployees = totalEmployees - todayAttendances.filter(
       a => a.checkInTime
     ).length;
@@ -295,10 +299,11 @@ export const getTodayAttendance = async (req, res) => {
       date: { $gte: startDate, $lte: endDate }
     }).populate('user', 'fullName employeeNumber department position profileImage');
 
-    // Get all active employees
+    // Get all active and approved employees
     const allEmployees = await User.find({ 
       role: 'employee', 
-      isActive: true 
+      isActive: true,
+      approvalStatus: 'approved'
     }).select('_id fullName employeeNumber');
 
     // Calculate stats
