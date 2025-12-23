@@ -106,14 +106,27 @@ export const completeRegistration = async (req, res) => {
     }
 
     // OPTIMIZATION: Run duplicate checks in parallel for faster registration
+    // CRITICAL: Use normalized key for duplicate checks to ensure consistency
     const duplicateCheckStartTime = Date.now();
+    
+    console.log('🔍 Duplicate check: Using normalized fingerprint key for query...');
+    console.log('   - Normalized key length:', fingerprintPublicKey?.length || 0);
+    console.log('   - Normalized key first 50:', fingerprintPublicKey?.substring(0, 50) || 'null');
     
     const [existingUser, existingFingerprint] = await Promise.all([
       User.findOne({ $or: [{ email }, { employeeNumber }] }),
-      User.findOne({ fingerprintData: fingerprintPublicKey })
+      User.findOne({ fingerprintData: fingerprintPublicKey }) // fingerprintPublicKey is already normalized at line 27
     ]);
     
     console.log(`⏱️ Duplicate checks completed in ${Date.now() - duplicateCheckStartTime}ms`);
+    
+    if (existingFingerprint) {
+      console.log('🔍 Found existing fingerprint in database:');
+      console.log('   - Existing user:', existingFingerprint.email || existingFingerprint.employeeNumber);
+      console.log('   - Existing fingerprint length:', existingFingerprint.fingerprintData?.length || 0);
+      console.log('   - Existing fingerprint first 50:', existingFingerprint.fingerprintData?.substring(0, 50) || 'null');
+      console.log('   - Match with normalized key:', existingFingerprint.fingerprintData?.trim() === fingerprintPublicKey ? 'YES ✅' : 'NO ❌');
+    }
 
     if (existingUser) {
       console.log('❌ Duplicate user found:', existingUser.email || existingUser.employeeNumber);
@@ -408,6 +421,16 @@ export const completeRegistration = async (req, res) => {
     }
 
     // Create user with biometric data
+    // CRITICAL: Ensure fingerprintPublicKey is normalized before saving
+    const normalizedFingerprintForSave = fingerprintPublicKey ? fingerprintPublicKey.trim() : null;
+    
+    console.log('💾 Saving fingerprint to database:');
+    console.log('   - Original key length:', fingerprintPublicKey?.length || 0);
+    console.log('   - Normalized key length:', normalizedFingerprintForSave?.length || 0);
+    console.log('   - First 100 chars:', normalizedFingerprintForSave?.substring(0, 100) || 'null');
+    console.log('   - Last 100 chars:', normalizedFingerprintForSave ? '...' + normalizedFingerprintForSave.substring(Math.max(0, normalizedFingerprintForSave.length - 100)) : 'null');
+    console.log('   - Full length:', normalizedFingerprintForSave?.length || 0);
+    
     const userData = {
       employeeNumber,
       email,
@@ -418,7 +441,7 @@ export const completeRegistration = async (req, res) => {
       role: role || 'employee',
       profileImage: profileImage || null, // Store profile image URL path (e.g., "/uploads/profiles/123_user_profileImage.jpg")
       branch: branch || null, // Store location/branch reference
-      fingerprintData: fingerprintPublicKey, // Store fingerprint ID (publicKey)
+      fingerprintData: normalizedFingerprintForSave, // Store normalized fingerprint ID (publicKey)
       faceImage: faceImage || null, // Face image URL path (e.g., "/uploads/faces/123_user_faceImage.jpg")
       faceId: newFaceId, // Store face ID (hash) - kept for backward compatibility
       faceEmbedding: validatedEmbedding || null, // Store face embedding (generated on-device)
@@ -440,6 +463,45 @@ export const completeRegistration = async (req, res) => {
     const user = await User.create(userData);
     const createUserTime = Date.now() - createUserStartTime;
     console.log(`✅ User created successfully in ${createUserTime}ms:`, user._id);
+    
+    // CRITICAL: Verify the fingerprint was saved correctly and can be queried
+    const savedUser = await User.findById(user._id).select('fingerprintData email employeeNumber');
+    if (savedUser) {
+      console.log('🔍 Verification: Checking saved fingerprint in database...');
+      console.log('   - Saved fingerprint length:', savedUser.fingerprintData?.length || 0);
+      console.log('   - Saved fingerprint first 100:', savedUser.fingerprintData?.substring(0, 100) || 'null');
+      console.log('   - Saved fingerprint last 100:', savedUser.fingerprintData ? '...' + savedUser.fingerprintData.substring(Math.max(0, savedUser.fingerprintData.length - 100)) : 'null');
+      console.log('   - Matches what we tried to save:', savedUser.fingerprintData?.trim() === normalizedFingerprintForSave ? 'YES ✅' : 'NO ❌');
+      if (savedUser.fingerprintData?.trim() !== normalizedFingerprintForSave) {
+        console.error('❌ CRITICAL: Saved fingerprint does NOT match what we tried to save!');
+        console.error('   This will cause login failures!');
+      }
+      
+      // CRITICAL: Test if we can find this user using the normalized key (simulating login)
+      console.log('🔍 Testing login query: Can we find this user with the normalized key?');
+      const testLoginQuery = await User.findOne({ fingerprintData: normalizedFingerprintForSave });
+      if (testLoginQuery && testLoginQuery._id.toString() === user._id.toString()) {
+        console.log('✅ SUCCESS: Login query works! User can be found with normalized key.');
+      } else if (testLoginQuery) {
+        console.error('❌ ERROR: Login query found a DIFFERENT user! This is a critical bug!');
+        console.error('   Expected user ID:', user._id);
+        console.error('   Found user ID:', testLoginQuery._id);
+      } else {
+        console.error('❌ CRITICAL: Login query FAILED! User cannot be found with normalized key!');
+        console.error('   This means login will fail even though registration succeeded!');
+        console.error('   Trying with trimmed database value...');
+        const testWithTrim = await User.findOne({ 
+          fingerprintData: { $exists: true, $ne: null }
+        });
+        if (testWithTrim) {
+          const trimmedDbKey = testWithTrim.fingerprintData.trim();
+          if (trimmedDbKey === normalizedFingerprintForSave) {
+            console.error('⚠️ Found match with trimmed comparison - database has whitespace!');
+            console.error('   This suggests the key was saved with whitespace despite normalization.');
+          }
+        }
+      }
+    }
 
     // Send notification to admin about new employee registration
     try {
