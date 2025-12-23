@@ -24,9 +24,17 @@ export const completeRegistration = async (req, res) => {
     const longitude = req.body.longitude ? parseFloat(req.body.longitude) : null;
     const address = req.body.address || null;
     const streetName = req.body.streetName || null;
-    const fingerprintPublicKey = req.body.fingerprintPublicKey;
+    // CRITICAL: Normalize fingerprint key (trim whitespace) to prevent intermittent mismatches
+    const fingerprintPublicKey = req.body.fingerprintPublicKey ? req.body.fingerprintPublicKey.trim() : null;
     const faceId = req.body.faceId;
     const biometricType = req.body.biometricType;
+    
+    // Log if normalization changed the key
+    if (req.body.fingerprintPublicKey && req.body.fingerprintPublicKey !== fingerprintPublicKey) {
+      console.log('⚠️ WARNING: Fingerprint key had whitespace! Normalized.');
+      console.log('   Original length:', req.body.fingerprintPublicKey.length);
+      console.log('   Normalized length:', fingerprintPublicKey.length);
+    }
     
     // Parse arrays/objects from JSON strings
     const faceEmbedding = req.body.faceEmbedding ? JSON.parse(req.body.faceEmbedding) : null;
@@ -968,13 +976,72 @@ export const loginWithBiometric = async (req, res) => {
       // Skip fingerprint-only path - go directly to face verification
     } else if (hasFingerprint && !hasFace) {
       console.log('🔑 Using FINGERPRINT-ONLY login path (no face data provided)');
+      
+      // CRITICAL: Normalize the fingerprint key (trim whitespace, ensure consistent format)
+      // This fixes intermittent issues where keys might have leading/trailing whitespace
+      const normalizedFingerprintKey = fingerprintPublicKey ? fingerprintPublicKey.trim() : null;
+      
+      console.log('🔍 Normalized fingerprint key details:');
+      console.log('   - Original length:', fingerprintPublicKey?.length || 0);
+      console.log('   - Normalized length:', normalizedFingerprintKey?.length || 0);
+      console.log('   - First 100 chars:', normalizedFingerprintKey?.substring(0, 100) || 'null');
+      console.log('   - Last 100 chars:', normalizedFingerprintKey ? '...' + normalizedFingerprintKey.substring(Math.max(0, normalizedFingerprintKey.length - 100)) : 'null');
+      
+      if (!normalizedFingerprintKey) {
+        console.log('❌ Fingerprint key is null or empty after normalization');
+        return res.status(401).json({ 
+          message: 'البصمة غير مسجلة أو غير صحيحة' 
+        });
+      }
+      
       // Method 1: Fingerprint ONLY login (no face data at all)
+      // Try exact match first
       user = await User.findOne({
-        fingerprintData: fingerprintPublicKey
+        fingerprintData: normalizedFingerprintKey
       });
-
+      
+      // If exact match fails, try with trimmed database values (fallback for data inconsistencies)
       if (!user) {
-        console.log('❌ No user found with this fingerprintPublicKey');
+        console.log('⚠️ Exact match failed, trying with trimmed database values...');
+        // Get all users with fingerprint data and compare manually
+        const allUsersWithFingerprint = await User.find({
+          fingerprintData: { $exists: true, $ne: null }
+        }).select('fingerprintData email employeeNumber fullName');
+        
+        console.log(`📊 Checking ${allUsersWithFingerprint.length} users with fingerprint data...`);
+        
+        for (const dbUser of allUsersWithFingerprint) {
+          if (dbUser.fingerprintData) {
+            const normalizedDbKey = dbUser.fingerprintData.trim();
+            if (normalizedDbKey === normalizedFingerprintKey) {
+              console.log('✅ Found match with normalized comparison!');
+              console.log('   - User:', dbUser.email || dbUser.employeeNumber);
+              console.log('   - Database key length:', dbUser.fingerprintData.length);
+              console.log('   - Normalized DB key length:', normalizedDbKey.length);
+              console.log('   - Sent key length:', normalizedFingerprintKey.length);
+              user = await User.findById(dbUser._id);
+              break;
+            }
+          }
+        }
+      }
+      
+      // Log detailed comparison if still no match
+      if (!user) {
+        console.log('❌ No user found with this fingerprintPublicKey (even after normalization)');
+        console.log('🔍 Diagnostic: Checking first 5 users in database for comparison...');
+        const sampleUsers = await User.find({
+          fingerprintData: { $exists: true, $ne: null }
+        }).limit(5).select('fingerprintData email employeeNumber');
+        
+        sampleUsers.forEach((sampleUser, index) => {
+          console.log(`   User ${index + 1}: ${sampleUser.email || sampleUser.employeeNumber}`);
+          console.log(`      DB key length: ${sampleUser.fingerprintData?.length || 0}`);
+          console.log(`      DB key first 50: ${sampleUser.fingerprintData?.substring(0, 50) || 'null'}...`);
+          console.log(`      Sent key first 50: ${normalizedFingerprintKey.substring(0, 50)}...`);
+          console.log(`      Match: ${sampleUser.fingerprintData?.trim() === normalizedFingerprintKey ? 'YES ✅' : 'NO ❌'}`);
+        });
+        
         return res.status(401).json({ 
           message: 'البصمة غير مسجلة أو غير صحيحة' 
         });
