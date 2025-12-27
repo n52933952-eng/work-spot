@@ -176,7 +176,8 @@ const Employees = () => {
       employee: { label: 'موظف', color: 'blue' },
       hr: { label: 'موظف موارد بشرية', color: 'purple' },
       manager: { label: 'مدير', color: 'orange' },
-      admin: { label: 'مدير عام', color: 'red' },
+      generalManager: { label: 'مدير عام', color: 'red' },
+      admin: { label: 'مدير عام', color: 'red' }, // Keep for backward compatibility with existing data
     };
     return roles[role] || roles.employee;
   };
@@ -256,6 +257,7 @@ const Employees = () => {
                   <option value="employee">موظف</option>
                   <option value="hr">موظف موارد بشرية</option>
                   <option value="manager">مدير</option>
+                  <option value="generalManager">مدير عام</option>
                 </Select>
               </FormControl>
 
@@ -418,7 +420,7 @@ const Employees = () => {
                       <option value="employee">موظف</option>
                       <option value="hr">موظف موارد بشرية</option>
                       <option value="manager">مدير</option>
-                      <option value="admin">مدير عام</option>
+                      <option value="generalManager">مدير عام</option>
                     </Select>
                   </FormControl>
 

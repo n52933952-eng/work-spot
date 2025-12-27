@@ -8,8 +8,8 @@ import { calculateDistance } from '../utils/geofencing.js';
 // Get dashboard data for admin/manager
 export const getDashboard = async (req, res) => {
   try {
-    // Only admin/hr/manager can access
-    if (!['admin', 'hr', 'manager'].includes(req.user.role)) {
+    // Only admin/hr/manager/generalManager can access
+    if (!['admin', 'hr', 'manager', 'generalManager'].includes(req.user.role)) {
       return res.status(403).json({ message: 'غير مصرح لك' });
     }
 
@@ -41,9 +41,9 @@ export const getDashboard = async (req, res) => {
       location: a.checkInLocation
     }));
 
-    // Get all users count - only count approved employees
+    // Get all users count - count all approved non-admin employees (employee, hr, manager)
     const totalEmployees = await User.countDocuments({ 
-      role: 'employee', 
+      role: { $ne: 'admin' }, 
       isActive: true,
       approvalStatus: 'approved'
     });
@@ -185,8 +185,8 @@ export const getLiveAttendanceBoard = async (req, res) => {
 // Get all employees (for admin)
 export const getAllEmployees = async (req, res) => {
   try {
-    // Only admin/hr/manager can access
-    if (!['admin', 'hr', 'manager'].includes(req.user.role)) {
+    // Only admin/hr/manager/generalManager can access
+    if (!['admin', 'hr', 'manager', 'generalManager'].includes(req.user.role)) {
       return res.status(403).json({ message: 'غير مصرح لك' });
     }
 
@@ -203,12 +203,15 @@ export const getAllEmployees = async (req, res) => {
       query.role = { $ne: 'admin' };
     }
     
+    // Only show approved employees (pending employees appear in approval page)
+    query.approvalStatus = 'approved';
+    
     if (department) query.department = department;
     if (isActive !== undefined) query.isActive = isActive === 'true';
 
     // Debug log to verify the query
     console.log('🔍 getAllEmployees query:', JSON.stringify(query));
-    console.log('🚫 Excluding admin users - query.role:', query.role);
+    console.log('🚫 Excluding admin users, showing only approved employees');
 
     const employees = await User.find(query)
       .select('-password')
@@ -233,8 +236,8 @@ export const getAllEmployees = async (req, res) => {
 // Update employee (for admin/hr/manager)
 export const updateEmployee = async (req, res) => {
   try {
-    // Only admin/hr/manager can update employees
-    if (!['admin', 'hr', 'manager'].includes(req.user.role)) {
+    // Only admin/hr/manager/generalManager can update employees
+    if (!['admin', 'hr', 'manager', 'generalManager'].includes(req.user.role)) {
       return res.status(403).json({ message: 'غير مصرح لك' });
     }
 
@@ -299,9 +302,9 @@ export const getTodayAttendance = async (req, res) => {
       date: { $gte: startDate, $lte: endDate }
     }).populate('user', 'fullName employeeNumber department position profileImage');
 
-    // Get all active and approved employees
+    // Get all active and approved non-admin employees (employee, hr, manager)
     const allEmployees = await User.find({ 
-      role: 'employee', 
+      role: { $ne: 'admin' }, 
       isActive: true,
       approvalStatus: 'approved'
     }).select('_id fullName employeeNumber');
