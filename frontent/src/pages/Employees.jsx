@@ -64,15 +64,21 @@ const Employees = () => {
     setLoading(true);
     try {
       const params = {};
-      if (filterDepartment) params.department = filterDepartment;
-      if (filterRole) params.role = filterRole;
-      if (filterStatus !== '') params.isActive = filterStatus === 'active';
+      // Only add params if they have values (empty strings are falsy)
+      if (filterDepartment && filterDepartment.trim()) params.department = filterDepartment;
+      if (filterRole && filterRole.trim()) params.role = filterRole;
+      if (filterStatus && filterStatus !== '') params.isActive = filterStatus === 'active';
       
+      console.log('🔍 Fetching employees with params:', params);
       const response = await dashboardAPI.getAllEmployees(params);
+      console.log('✅ Received employees:', response.employees?.length || 0);
+      
       // Double-check: Filter out any admin users that might have slipped through
       const filteredEmployees = (response.employees || []).filter(emp => emp.role !== 'admin');
       setEmployees(filteredEmployees);
+      console.log('✅ Filtered employees (excluding admin):', filteredEmployees.length);
     } catch (error) {
+      console.error('❌ Error fetching employees:', error);
       toast({
         title: 'خطأ',
         description: error.message || 'فشل جلب الموظفين',
@@ -80,6 +86,7 @@ const Employees = () => {
         duration: 5000,
         isClosable: true,
       });
+      setEmployees([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
@@ -142,6 +149,7 @@ const Employees = () => {
       onEditClose();
       // Clear role and department filters to show all employees including the updated one
       // This ensures the employee appears even if their role/department changed
+      // The useEffect will automatically refetch when filters change
       setFilterRole('');
       setFilterDepartment('');
     } catch (error) {
