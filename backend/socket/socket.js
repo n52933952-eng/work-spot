@@ -12,12 +12,14 @@ const io = new Server(server,{
             // Allow requests with no origin (like mobile apps)
             if (!origin) return callback(null, true);
             
-            // Allow localhost and local network IPs
+            // Allow localhost, production frontend, and local network IPs
             const allowedOrigins = [
                 "http://localhost:5173",
+                "https://work-spot-1.onrender.com", // Production frontend
+                process.env.CLIENT_URL, // From environment variable
                 /^http:\/\/192\.168\.\d+\.\d+:\d+$/,
                 /^http:\/\/10\.0\.2\.2:\d+$/, // Android emulator
-            ];
+            ].filter(Boolean); // Remove undefined values
             
             const isAllowed = allowedOrigins.some(allowed => {
                 if (typeof allowed === 'string') {
@@ -28,8 +30,11 @@ const io = new Server(server,{
                 return false;
             });
             
-            // For mobile apps, allow all origins
-            callback(null, true);
+            if (isAllowed || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+                callback(null, true);
+            } else {
+                callback(new Error('Not allowed by CORS'));
+            }
         },
         methods:["GET","POST"],
         credentials: true

@@ -41,9 +41,29 @@ app.use('/uploads', (req, res, next) => {
 }, express.static(path.join(__dirname, 'public/uploads')))
 console.log('📁 Serving static files from:', path.join(__dirname, 'public/uploads'))
 
-// CORS configuration - allow localhost for development
+// CORS configuration - allow frontend URLs
+const allowedOrigins = [
+  'http://localhost:5173', // Local development
+  'https://work-spot-1.onrender.com', // Production frontend
+  process.env.CLIENT_URL // Allow custom URL from environment variable
+].filter(Boolean); // Remove undefined values
+
 app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:5173",
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or Postman)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      // For development, allow any localhost origin
+      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    }
+  },
   credentials: true
 }))
 
