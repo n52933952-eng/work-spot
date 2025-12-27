@@ -9,6 +9,7 @@
     "build": "npm install && npm install --prefix frontent && npm run build --prefix frontent",
     "setup:location": "node backend/scripts/createDefaultLocation.js",
     "setup:admin": "node backend/scripts/createCustomAdmin.js",
+    "verify:admin": "node backend/scripts/verifyAdminPassword.js",
     "test:attendance": "node backend/scripts/addTestAttendance.js",
     "remove:test": "node backend/scripts/removeTestAttendance.js"
   },

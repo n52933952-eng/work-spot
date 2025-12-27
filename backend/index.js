@@ -48,23 +48,36 @@ const allowedOrigins = [
   process.env.CLIENT_URL // Allow custom URL from environment variable
 ].filter(Boolean); // Remove undefined values
 
+console.log('🌐 CORS Allowed Origins:', allowedOrigins);
+
 app.use(cors({
   origin: (origin, callback) => {
+    console.log('🔍 CORS Request from origin:', origin);
+    
     // Allow requests with no origin (like mobile apps or Postman)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      console.log('✅ Allowing request with no origin');
+      return callback(null, true);
+    }
     
     if (allowedOrigins.includes(origin)) {
+      console.log('✅ Origin allowed:', origin);
       callback(null, true);
     } else {
       // For development, allow any localhost origin
       if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        console.log('✅ Allowing localhost origin:', origin);
         callback(null, true);
       } else {
+        console.log('❌ Origin not allowed:', origin);
+        console.log('   Allowed origins:', allowedOrigins);
         callback(new Error('Not allowed by CORS'));
       }
     }
   },
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }))
 
 // API Routes
