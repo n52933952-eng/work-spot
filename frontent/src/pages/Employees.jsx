@@ -149,9 +149,13 @@ const Employees = () => {
       onEditClose();
       // Clear role and department filters to show all employees including the updated one
       // This ensures the employee appears even if their role/department changed
-      // The useEffect will automatically refetch when filters change
       setFilterRole('');
       setFilterDepartment('');
+      // Force immediate refetch - fetchEmployees will be recreated with cleared filters
+      // and useEffect will trigger, but we also call it directly to ensure immediate update
+      setTimeout(() => {
+        fetchEmployees();
+      }, 50);
     } catch (error) {
       toast({
         title: 'خطأ',
