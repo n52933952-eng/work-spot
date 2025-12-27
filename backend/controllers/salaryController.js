@@ -52,7 +52,8 @@ export const calculateEmployeeSalary = async (req, res) => {
       }
       employees = [employees];
     } else {
-      employees = await User.find({ role: 'employee', isActive: true });
+      // Fetch all employees except admin users
+      employees = await User.find({ role: { $ne: 'admin' }, isActive: true });
     }
 
     // Get holidays for the month
@@ -347,9 +348,12 @@ export const getAllEmployeesSalaries = async (req, res) => {
       });
     }
 
-    const employees = await User.find({ role: 'employee', isActive: true })
-      .select('fullName employeeNumber email department position baseSalary overtimeRate profileImage')
+    // Fetch all employees except admin users
+    const employees = await User.find({ role: { $ne: 'admin' }, isActive: true })
+      .select('fullName employeeNumber email department position baseSalary overtimeRate profileImage role')
       .sort({ fullName: 1 });
+
+    console.log(`✅ getAllEmployeesSalaries: Found ${employees.length} employees (excluding admin users)`);
 
     res.status(200).json({
       success: true,

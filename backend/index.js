@@ -65,9 +65,19 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ message: 'Server is running', status: 'ok' })
 })
 
+// MongoDB Connection
+if (!process.env.MONGO) {
+  console.error('❌ MONGO environment variable is not set!');
+  console.error('Please set MONGO in your .env file or Render.com environment variables');
+  process.exit(1);
+}
+
 mongoose.connect(process.env.MONGO)
-.then(() => console.log("MongoDB Connected"))
-.catch((error) => console.log("MongoDB Connection Error:", error))
+  .then(() => console.log("✅ MongoDB Connected Successfully"))
+  .catch((error) => {
+    console.error("❌ MongoDB Connection Error:", error.message);
+    process.exit(1);
+  })
 
 // Start scheduler for notifications
 import('./utils/scheduler.js').then(module => {

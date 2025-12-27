@@ -140,7 +140,10 @@ const Employees = () => {
         isClosable: true,
       });
       onEditClose();
-      fetchEmployees();
+      // Clear role and department filters to show all employees including the updated one
+      // This ensures the employee appears even if their role/department changed
+      setFilterRole('');
+      setFilterDepartment('');
     } catch (error) {
       toast({
         title: 'خطأ',
