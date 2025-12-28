@@ -321,19 +321,21 @@ export const completeRegistration = async (req, res) => {
           console.log(`   Existing user fingerprintData: ${match.user.fingerprintData ? 'exists (' + match.user.fingerprintData.substring(0, 50) + '...)' : 'null'}`);
           console.log(`   New fingerprintPublicKey: ${fingerprintPublicKey ? fingerprintPublicKey.substring(0, 50) + '...' : 'null'}`);
           
-          // Check if same device (fingerprint keys match)
+          // Check if same device (fingerprint keys match) - ONLY block if BOTH face AND fingerprint match
           if (match.user.fingerprintData === fingerprintPublicKey) {
+            // BOTH face AND fingerprint match - definitely same person, same device
             console.log('   ✅ Same device detected (fingerprint keys match) - BLOCKING');
             return res.status(400).json({ 
               message: 'أنت مسجل بالفعل على هذا الجهاز. يرجى تسجيل الدخول بدلاً من التسجيل مرة أخرى.' 
             });
           } else {
-            // Different device OR keys were regenerated - same person
-            console.log('   ⚠️ Different fingerprint keys but SAME face - likely same person with regenerated keys');
-            console.log('   BLOCKING: Same person cannot register multiple times');
-            return res.status(400).json({ 
-              message: 'أنت مسجل بالفعل (الوجه والبصمة مسجلان). يرجى تسجيل الدخول بدلاً من التسجيل مرة أخرى.' 
-            });
+            // Face matches but fingerprint doesn't - allow registration
+            // This handles cases like Samsung phones where KeyStore generates new keys after reinstall
+            // Only block if BOTH face AND fingerprint match (same person, same device)
+            console.log('   ⚠️ Face matches but fingerprint keys are different - ALLOWING registration');
+            console.log('   💡 Fingerprint key may have changed (e.g., Samsung KeyStore after app reinstall)');
+            console.log('   💡 Only blocking when BOTH face AND fingerprint match to prevent false positives');
+            // Continue with registration - don't block
           }
         }
       }
@@ -369,35 +371,21 @@ export const completeRegistration = async (req, res) => {
             console.log(`   Existing user fingerprintData: ${user.fingerprintData ? 'exists (' + user.fingerprintData.substring(0, 50) + '...)' : 'null'}`);
             console.log(`   New fingerprintPublicKey: ${fingerprintPublicKey ? fingerprintPublicKey.substring(0, 50) + '...' : 'null'}`);
             
-            // Check if this is the same device (same fingerprintPublicKey)
+            // Check if this is the same device (same fingerprintPublicKey) - ONLY block if BOTH face AND fingerprint match
             if (user.fingerprintData === fingerprintPublicKey) {
-              // Same person, same device - already registered
+              // BOTH face AND fingerprint match - definitely same person, same device
               console.log('   ✅ Same person, same device detected (fingerprintPublicKey matches) - BLOCKING');
               return res.status(400).json({ 
                 message: 'أنت مسجل بالفعل على هذا الجهاز. يرجى تسجيل الدخول بدلاً من التسجيل مرة أخرى.' 
               });
             } else {
-              // Same person detected, but fingerprintPublicKey is different
-              // This could mean:
-              // 1. Different device (same person, different phone) - BLOCK
-              // 2. Same device but keys were regenerated - BLOCK (same person)
-              console.log('   ⚠️ Same person detected, but fingerprintPublicKey is different');
-              console.log('   BLOCKING: Same person cannot register multiple times');
-              
-              // Always block - same person cannot register multiple times
-              if (user.fingerprintData) {
-                // User already registered with biometric (fingerprint) - show message with both
-                console.log('   Existing user has fingerprintPublicKey - they registered with biometric');
-                return res.status(400).json({ 
-                  message: 'أنت مسجل بالفعل (الوجه والبصمة مسجلان). يرجى تسجيل الدخول بدلاً من التسجيل مرة أخرى.' 
-                });
-              } else {
-                // Existing user doesn't have fingerprintPublicKey (registered without biometric?)
-                // Still block - same face detected
-                return res.status(400).json({ 
-                  message: 'هذا الوجه مسجل مسبقاً. يرجى استخدام حسابك الحالي أو تسجيل الدخول بالوجه.' 
-                });
-              }
+              // Face matches but fingerprint doesn't - allow registration
+              // This handles cases like Samsung phones where KeyStore generates new keys after reinstall
+              // Only block if BOTH face AND fingerprint match (same person, same device)
+              console.log('   ⚠️ Face matches but fingerprint keys are different - ALLOWING registration');
+              console.log('   💡 Fingerprint key may have changed (e.g., Samsung KeyStore after app reinstall)');
+              console.log('   💡 Only blocking when BOTH face AND fingerprint match to prevent false positives');
+              // Continue with registration - don't block
             }
           }
         }
