@@ -1149,6 +1149,21 @@ export const loginWithBiometric = async (req, res) => {
 
     // Step 2: Handle Face login (with or without fingerprint)
     if (hasFace) {
+      console.log('═══════════════════════════════════════════════════════');
+      console.log('👤 FACE LOGIN ATTEMPT STARTED');
+      console.log('═══════════════════════════════════════════════════════');
+      console.log('📋 Face data summary:');
+      console.log('   - hasFaceEmbedding:', hasFaceEmbedding);
+      console.log('   - hasValidFaceLandmarks:', hasValidFaceLandmarks);
+      console.log('   - hasFaceId:', !!faceId);
+      console.log('   - hasFaceImage:', !!faceImage);
+      console.log('   - faceEmbedding length:', faceEmbedding ? faceEmbedding.length : 'null');
+      console.log('   - faceId value:', faceId || 'null');
+      console.log('   - email:', email || 'null');
+      console.log('   - employeeNumber:', employeeNumber || 'null');
+      console.log('   - fingerprintPublicKey provided:', !!fingerprintPublicKey);
+      console.log('═══════════════════════════════════════════════════════');
+      
       // Face verification path (already logged above if we got here)
       // Get faceId - either from request body (preferred) or generate from faceImage
       let faceIdValue = faceId;
@@ -1181,7 +1196,16 @@ export const loginWithBiometric = async (req, res) => {
       // Priority 1: Use faceEmbedding directly (generated on-device) - MOST ACCURATE
       if (hasFaceEmbedding) {
         try {
-          console.log('🔍 Searching for user by face embedding (from device)...');
+          console.log('═══════════════════════════════════════════════════════');
+          console.log('🔍 METHOD 1: Searching for user by FACE EMBEDDING');
+          console.log('═══════════════════════════════════════════════════════');
+          console.log('📊 Face embedding details:');
+          console.log('   - Embedding array length:', faceEmbedding.length);
+          console.log('   - First 5 values:', faceEmbedding.slice(0, 5));
+          console.log('   - Last 5 values:', faceEmbedding.slice(-5));
+          console.log('   - Min value:', Math.min(...faceEmbedding));
+          console.log('   - Max value:', Math.max(...faceEmbedding));
+          console.log('═══════════════════════════════════════════════════════');
           const loginStartTime = Date.now();
           
           // OPTIMIZATION: Limit search scope for scalability (same as registration)
@@ -1215,10 +1239,18 @@ export const loginWithBiometric = async (req, res) => {
           // Root causes: face detection variations, TFLite randomness, preprocessing
           // Lowered from 70% to 65% to be more lenient for login (registration uses 97%)
           // TODO: Implement multiple embeddings + voting system for stability
+          console.log('🔍 Starting face embedding comparison...');
+          console.log('   - Users in database to compare:', allUsers.length);
+          console.log('   - Similarity threshold: 65% (0.65)');
           const match = findMatchingUser(faceEmbedding, allUsers, 0.65);
           
           const loginSearchTime = Date.now() - loginStartTime;
           console.log(`⏱️ Login embedding search completed in ${loginSearchTime}ms`);
+          console.log(`📊 Search result: ${match ? 'MATCH FOUND ✅' : 'NO MATCH ❌'}`);
+          if (match) {
+            console.log('   - Matched user:', match.user.email || match.user.employeeNumber);
+            console.log('   - Similarity:', (match.similarity * 100).toFixed(2) + '%');
+          }
           
           if (match) {
             user = match.user;
@@ -1247,17 +1279,38 @@ export const loginWithBiometric = async (req, res) => {
               console.log('✅ Face login: No device binding required');
             }
           } else {
-            console.log('❌ No user found with matching face embedding');
+            console.log('═══════════════════════════════════════════════════════');
+            console.log('❌ NO MATCH FOUND - Face embedding similarity below 65% threshold');
+            console.log('═══════════════════════════════════════════════════════');
             console.log('🔍 DIAGNOSTIC: Checking all users with faceEmbedding for debugging...');
             
             // DIAGNOSTIC: Show all similarities even below threshold
             if (allUsers.length > 0) {
-              console.log('📊 All users checked:');
-              for (const u of allUsers) {
-                const sim = cosineSimilarity(faceEmbedding, u.faceEmbedding);
-                console.log(`   - ${u.email || u.employeeNumber || u._id}: ${(sim * 100).toFixed(2)}% similarity`);
+              console.log('📊 Similarity scores for all users in database:');
+              const similarities = allUsers.map(u => ({
+                user: u,
+                similarity: cosineSimilarity(faceEmbedding, u.faceEmbedding)
+              })).sort((a, b) => b.similarity - a.similarity); // Sort by similarity (highest first)
+              
+              console.log(`   Found ${similarities.length} users to compare:`);
+              similarities.slice(0, 10).forEach((item, index) => {
+                console.log(`   ${index + 1}. ${item.user.email || item.user.employeeNumber || item.user._id}: ${(item.similarity * 100).toFixed(2)}% similarity ${item.similarity >= 0.65 ? '✅ ABOVE THRESHOLD' : '❌ below threshold'}`);
+              });
+              
+              if (similarities.length > 0) {
+                const bestMatch = similarities[0];
+                console.log(`\n🏆 Best match found: ${bestMatch.user.email || bestMatch.user.employeeNumber}`);
+                console.log(`   - Similarity: ${(bestMatch.similarity * 100).toFixed(2)}%`);
+                console.log(`   - Threshold required: 65%`);
+                console.log(`   - Difference: ${((bestMatch.similarity - 0.65) * 100).toFixed(2)}%`);
+                if (bestMatch.similarity < 0.65) {
+                  console.log(`   ⚠️ Below threshold by: ${((0.65 - bestMatch.similarity) * 100).toFixed(2)}%`);
+                }
               }
+            } else {
+              console.log('   ⚠️ No users found in database with faceEmbedding data!');
             }
+            console.log('═══════════════════════════════════════════════════════');
             
             // FALLBACK: Try to find user by faceId if faceEmbedding failed
             if (faceId) {
@@ -1431,7 +1484,9 @@ export const loginWithBiometric = async (req, res) => {
       
       // Priority 2: Find user by faceLandmarks (FALLBACK - for backward compatibility)
       if (hasValidFaceLandmarks) {
-        console.log('🔍 Searching for user by face landmarks...');
+        console.log('═══════════════════════════════════════════════════════');
+        console.log('🔍 METHOD 2: Searching for user by FACE LANDMARKS (Fallback)');
+        console.log('═══════════════════════════════════════════════════════');
         
         // Extract actual face data from payload structure
         // Frontend sends: { faceData: [detectedFace], faceFeatures: {...} }
