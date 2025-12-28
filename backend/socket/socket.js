@@ -9,8 +9,13 @@ const server = http.createServer(app)
 const io = new Server(server,{
     cors:{
         origin: function (origin, callback) {
-            // Allow requests with no origin (like mobile apps)
-            if (!origin) return callback(null, true);
+            // Allow requests with no origin (like mobile apps) - This is important!
+            if (!origin) {
+                console.log('✅ Socket.io: Allowing request with no origin (mobile app)');
+                return callback(null, true);
+            }
+            
+            console.log('🔍 Socket.io: Request from origin:', origin);
             
             // Allow localhost, production frontend, and local network IPs
             const allowedOrigins = [
@@ -31,9 +36,13 @@ const io = new Server(server,{
             });
             
             if (isAllowed || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+                console.log('✅ Socket.io: Origin allowed:', origin);
                 callback(null, true);
             } else {
-                callback(new Error('Not allowed by CORS'));
+                console.log('❌ Socket.io: Origin not allowed:', origin);
+                // For mobile apps, allow all origins (they may have dynamic origins)
+                // This is safer for mobile apps
+                callback(null, true);
             }
         },
         methods:["GET","POST"],

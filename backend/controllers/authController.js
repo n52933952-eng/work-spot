@@ -264,11 +264,19 @@ export const completeRegistration = async (req, res) => {
       }
       
       // Step 4: If face doesn't match but fingerprint does, it's a different person on same device
-      // BLOCK this - one device should only have one user
-      console.log('   ❌ Different person detected on SAME device - BLOCKING (one device = one user)');
-      return res.status(400).json({ 
-        message: 'هذا الجهاز مستخدم بالفعل. يرجى استخدام جهاز آخر أو تسجيل الدخول بالحساب المسجل على هذا الجهاز.' 
-      });
+      // ALLOW this - different person can register on the device (handles Samsung phones where KeyStore persists)
+      // Clear the fingerprint from the old user so the new user can use it
+      console.log('   ⚠️ Different person detected on SAME device - ALLOWING registration');
+      console.log('   💡 This can happen on Samsung phones where KeyStore keys persist after app uninstall');
+      console.log('   💡 Clearing fingerprint from old user to allow new user to register with this device');
+      
+      // Clear fingerprintData from the existing user (they can still login with face/email)
+      await User.updateOne(
+        { _id: existingFingerprintUser._id },
+        { $set: { fingerprintData: null } }
+      );
+      console.log(`   ✅ Cleared fingerprintData from user: ${existingFingerprintUser.email || existingFingerprintUser.employeeNumber}`);
+      // Continue with registration - the new user will get this fingerprint
     }
     
     console.log('✅ Fingerprint check: No duplicate fingerprintPublicKey found - device is available');
