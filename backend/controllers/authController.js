@@ -1256,28 +1256,35 @@ export const loginWithBiometric = async (req, res) => {
             user = match.user;
             console.log(`✅ Found user by face embedding: ${(match.similarity * 100).toFixed(2)}% similarity`);
             
-            // SECURITY: Device binding is OPTIONAL for face-only login
-            // If fingerprint is provided, verify it matches (prevents friend from logging in from your device)
-            // If fingerprint is NOT provided, allow login (face-only login is allowed)
-            if (DEVICE_BINDING_ENABLED && user.fingerprintData && hasFingerprint && fingerprintPublicKey) {
-              // Fingerprint was provided - verify it matches registered device
-              if (user.fingerprintData !== fingerprintPublicKey) {
-                console.log('⚠️ Security: Fingerprint mismatch (face matched but wrong device)');
-                console.log('📱 Registered device length:', user.fingerprintData.length);
-                console.log('📱 Current device length:', fingerprintPublicKey.length);
-                console.log('📱 This prevents friends from logging in from your device');
-                return res.status(403).json({ 
-                  message: 'هذا الجهاز غير مسجل. يرجى إعادة التسجيل من هذا الجهاز أو استخدام جهازك المسجل.' 
-                });
+            // SECURITY: Face login is PRIMARY - if face matches, allow login regardless of fingerprint
+            // Fingerprint is optional for face login (user can login with face from any device)
+            // If fingerprint is provided and matches, great. If not, still allow if face matches.
+            console.log('═══════════════════════════════════════════════════════');
+            console.log('✅ FACE MATCHED - Allowing login (fingerprint is optional)');
+            console.log('═══════════════════════════════════════════════════════');
+            if (hasFingerprint && fingerprintPublicKey && user.fingerprintData) {
+              // Fingerprint was provided - log it but don't block if it doesn't match
+              console.log('📱 Fingerprint provided - checking (optional, won\'t block login):');
+              console.log('   - Registered fingerprint length:', user.fingerprintData.length);
+              console.log('   - Current fingerprint length:', fingerprintPublicKey.length);
+              
+              // Normalize both fingerprints (trim whitespace) before comparison
+              const normalizedRegistered = user.fingerprintData.trim();
+              const normalizedCurrent = fingerprintPublicKey.trim();
+              
+              if (normalizedRegistered === normalizedCurrent) {
+                console.log('   ✅ Fingerprint matches - user logging in from registered device');
+              } else {
+                console.log('   ⚠️ Fingerprint doesn\'t match - but allowing login anyway (face matched)');
+                console.log('   💡 User can login with face from any device');
               }
-              console.log('✅ Fingerprint verified - user logging in from registered device');
-            } else if (DEVICE_BINDING_ENABLED && user.fingerprintData && !hasFingerprint) {
-              // User has registered device but no fingerprint provided - ALLOW face-only login
-              console.log('⚠️ Face-only login: User has registered device but no fingerprint provided');
-              console.log('✅ Allowing face-only login (device binding optional for face login)');
-            } else {
-              console.log('✅ Face login: No device binding required');
+            } else if (!hasFingerprint) {
+              console.log('📱 No fingerprint provided - face-only login');
+            } else if (!user.fingerprintData) {
+              console.log('📱 User has no registered fingerprint - face-only login');
             }
+            console.log('✅ Proceeding with face login...');
+            console.log('═══════════════════════════════════════════════════════');
           } else {
             console.log('═══════════════════════════════════════════════════════');
             console.log('❌ NO MATCH FOUND - Face embedding similarity below 65% threshold');
@@ -1347,30 +1354,20 @@ export const loginWithBiometric = async (req, res) => {
                 console.log('   - faceId:', userByFaceId.faceId);
                 console.log('   - has fingerprintData:', !!userByFaceId.fingerprintData);
                 
-                // SECURITY: Device binding is OPTIONAL for face-only login (same as faceEmbedding path)
-                // If fingerprint is provided, verify it matches (prevents friend from logging in from your device)
-                // If fingerprint is NOT provided, allow login (face-only login is allowed)
-                if (DEVICE_BINDING_ENABLED && userByFaceId.fingerprintData && hasFingerprint && fingerprintPublicKey) {
-                  console.log('🔒 Device binding check: Fingerprint provided, verifying...');
-                  console.log('🔒 Comparing fingerprints:');
-                  console.log('   - Registered device length:', userByFaceId.fingerprintData.length);
-                  console.log('   - Current device length:', fingerprintPublicKey.length);
-                  console.log('   - Match:', userByFaceId.fingerprintData === fingerprintPublicKey ? 'YES ✅' : 'NO ❌');
-                  
-                  if (userByFaceId.fingerprintData !== fingerprintPublicKey) {
-                    console.log('❌ Device binding failed: Fingerprint mismatch');
-                    console.log('📱 This prevents friends from logging in from your device');
-                    return res.status(403).json({ 
-                      message: 'هذا الجهاز غير مسجل. يرجى إعادة التسجيل من هذا الجهاز أو استخدام جهازك المسجل.' 
-                    });
+                // SECURITY: Face login is PRIMARY - if face matches, allow login regardless of fingerprint
+                // Fingerprint is optional for face login (user can login with face from any device)
+                console.log('✅ FACE MATCHED (faceId fallback) - Allowing login (fingerprint is optional)');
+                if (hasFingerprint && fingerprintPublicKey && userByFaceId.fingerprintData) {
+                  // Fingerprint was provided - log it but don't block if it doesn't match
+                  const normalizedRegistered = userByFaceId.fingerprintData.trim();
+                  const normalizedCurrent = fingerprintPublicKey.trim();
+                  if (normalizedRegistered === normalizedCurrent) {
+                    console.log('   ✅ Fingerprint matches - user logging in from registered device');
+                  } else {
+                    console.log('   ⚠️ Fingerprint doesn\'t match - but allowing login anyway (face matched)');
                   }
-                  console.log('✅ Device binding verified');
-                } else if (DEVICE_BINDING_ENABLED && userByFaceId.fingerprintData && !hasFingerprint) {
-                  // User has registered device but no fingerprint provided - ALLOW face-only login
-                  console.log('⚠️ Face-only login (fallback): User has registered device but no fingerprint provided');
-                  console.log('✅ Allowing face-only login (device binding optional for face login)');
                 } else {
-                  console.log('✅ Face login (fallback): No device binding required');
+                  console.log('   📱 Face-only login (no fingerprint check)');
                 }
                 
                 // Use faceId match as user
@@ -1542,27 +1539,20 @@ export const loginWithBiometric = async (req, res) => {
           user = bestMatch;
           console.log(`✅ Found user by face landmarks: ${(bestSimilarity * 100).toFixed(2)}% similarity`);
           
-          // SECURITY: Device binding is OPTIONAL for face-only login (same as embedding path)
-          // If fingerprint is provided, verify it matches (prevents friend from logging in from your device)
-          // If fingerprint is NOT provided, allow login (face-only login is allowed)
-          if (DEVICE_BINDING_ENABLED && user.fingerprintData && hasFingerprint && fingerprintPublicKey) {
-            // Fingerprint was provided - verify it matches registered device
-            if (user.fingerprintData !== fingerprintPublicKey) {
-              console.log('⚠️ Security: Fingerprint mismatch (face matched but wrong device)');
-              console.log('⚠️ Security: User registered device:', user.fingerprintData.substring(0, 20) + '...');
-              console.log('⚠️ Security: Current device:', fingerprintPublicKey.substring(0, 20) + '...');
-              console.log('📱 This prevents friends from logging in from your device');
-              return res.status(403).json({ 
-                message: 'البصمة غير متطابقة مع المستخدم المسجل. يرجى تسجيل الدخول من جهازك المسجل.' 
-              });
+          // SECURITY: Face login is PRIMARY - if face matches, allow login regardless of fingerprint
+          // Fingerprint is optional for face login (user can login with face from any device)
+          console.log('✅ FACE MATCHED (landmarks) - Allowing login (fingerprint is optional)');
+          if (hasFingerprint && fingerprintPublicKey && user.fingerprintData) {
+            // Fingerprint was provided - log it but don't block if it doesn't match
+            const normalizedRegistered = user.fingerprintData.trim();
+            const normalizedCurrent = fingerprintPublicKey.trim();
+            if (normalizedRegistered === normalizedCurrent) {
+              console.log('   ✅ Fingerprint matches - user logging in from registered device');
+            } else {
+              console.log('   ⚠️ Fingerprint doesn\'t match - but allowing login anyway (face matched)');
             }
-            console.log('✅ Fingerprint verified - user logging in from registered device');
-          } else if (DEVICE_BINDING_ENABLED && user.fingerprintData && !hasFingerprint) {
-            // User has registered device but no fingerprint provided - ALLOW face-only login
-            console.log('⚠️ Face-only login (landmarks): User has registered device but no fingerprint provided');
-            console.log('✅ Allowing face-only login (device binding optional for face login)');
           } else {
-            console.log('✅ Face login (landmarks): No device binding required');
+            console.log('   📱 Face-only login (no fingerprint check)');
           }
           
           // Verify face is enabled
