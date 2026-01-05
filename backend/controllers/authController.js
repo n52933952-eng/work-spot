@@ -647,100 +647,41 @@ export const login = async (req, res) => {
   try {
     const { username, email, employeeNumber, password } = req.body;
 
-    // Simple admin login: username="admin" and password="admin"
-    // This is for the admin web panel only
-    if (username === 'admin' && password === 'admin') {
-      let user = await User.findOne({
-        $or: [
-          { email: 'admin@admin.com' },
-          { employeeNumber: 'admin' }
-        ]
-      });
-
-      // If no admin exists, create one
-      if (!user) {
-        const bcrypt = (await import('bcryptjs')).default;
-        const hashedPassword = await bcrypt.hash('admin', 10);
-        
-        user = await User.create({
-          employeeNumber: 'admin',
-          email: 'admin@admin.com',
-          password: hashedPassword,
-          fullName: 'System Administrator',
-          role: 'admin',
-          department: 'IT',
-          position: 'Administrator',
-          isActive: true,
-          expectedCheckInTime: '09:00',
-          expectedCheckOutTime: '17:00'
-        });
-        
-        console.log('✅ Auto-created admin user: username=admin, password=admin');
-      } else {
-        // Admin exists - ensure it has admin role and correct password
-        if (user.role !== 'admin') {
-          user.role = 'admin';
-          console.log('✅ Updated user role to admin');
-        }
-        
-        // Reset password to 'admin' if it doesn't match
-        const isPasswordCorrect = await user.comparePassword('admin');
-        if (!isPasswordCorrect) {
-          console.log('⚠️ Admin user exists but password is wrong. Resetting to "admin"...');
-          const bcrypt = (await import('bcryptjs')).default;
-          user.password = await bcrypt.hash('admin', 10);
-          console.log('✅ Admin password reset to "admin"');
-        }
-        
-        // Ensure user is active
-        if (!user.isActive) {
-          user.isActive = true;
-          console.log('✅ Activated admin user');
-        }
-        
-        await user.save();
-      }
-      
-      // Update last login
-      user.lastLogin = new Date();
-      await user.save();
-
-      // Generate token
-      const token = GenerateToken(user._id, res);
-
-      return res.status(200).json({
-        message: 'تم تسجيل الدخول بنجاح',
-        user: {
-          _id: user._id,
-          employeeNumber: user.employeeNumber,
-          email: user.email,
-          fullName: user.fullName,
-          role: user.role,
-          department: user.department,
-          position: user.position,
-          faceIdEnabled: user.faceIdEnabled,
-          twoFactorEnabled: user.twoFactorEnabled,
-          attendancePoints: user.attendancePoints
-        },
-        token
-      });
-    }
-
     // Regular login: Find user by username, email or employee number
     // Username can be used as email (case-insensitive - email is stored lowercase)
     const loginIdentifier = username || email;
+    
+    // Build query conditions
+    const queryConditions = [];
+    
+    if (loginIdentifier && loginIdentifier.trim()) {
+      queryConditions.push({ email: loginIdentifier.toLowerCase().trim() });
+    }
+    
+    if (employeeNumber && employeeNumber.trim()) {
+      queryConditions.push({ employeeNumber: employeeNumber.trim() });
+    }
+    
+    // If no valid identifier provided, return error
+    if (queryConditions.length === 0) {
+      return res.status(400).json({ 
+        message: 'الرجاء إدخال اسم المستخدم أو البريد الإلكتروني أو رقم الموظف' 
+      });
+    }
+    
     const user = await User.findOne({
-      $or: [
-        loginIdentifier ? { email: loginIdentifier.toLowerCase() } : null,
-        employeeNumber ? { employeeNumber } : null
-      ].filter(Boolean)
+      $or: queryConditions
     });
 
     if (!user) {
+      console.log('❌ Login failed - User not found');
+      console.log('   Search criteria:', queryConditions);
       return res.status(401).json({ 
         message: 'البريد الإلكتروني أو رقم الموظف غير صحيح' 
       });
     }
+    
+    console.log('✅ User found:', user.email || user.employeeNumber);
 
     // Check if user is active
     if (!user.isActive) {

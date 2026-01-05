@@ -62,19 +62,28 @@ const createCustomAdmin = async () => {
       console.log('   Role:', existingAdmin.role);
       
       // Update existing admin with new password and email
+      // Use updateOne to bypass pre-save hook (password is already hashed)
       const hashedPassword = await bcrypt.hash(adminData.password, 10);
-      existingAdmin.password = hashedPassword;
-      existingAdmin.email = adminData.email.toLowerCase(); // Ensure lowercase: "Yazen" -> "yazen"
-      existingAdmin.fullName = adminData.fullName;
-      existingAdmin.role = 'admin';
-      existingAdmin.department = adminData.department;
-      existingAdmin.position = adminData.position;
-      existingAdmin.isActive = true;
-      existingAdmin.approvalStatus = 'approved';
-      await existingAdmin.save();
+      
+      await User.updateOne(
+        { _id: existingAdmin._id },
+        {
+          $set: {
+            password: hashedPassword, // Already hashed, so bypass pre-save hook
+            email: adminData.email.toLowerCase(), // Ensure lowercase: "Yazen" -> "yazen"
+            fullName: adminData.fullName,
+            role: 'admin',
+            department: adminData.department,
+            position: adminData.position,
+            isActive: true,
+            approvalStatus: 'approved'
+          }
+        }
+      );
       
       console.log('✅ Updated existing admin user with new credentials');
       console.log('   New password has been set');
+      console.log('   New email:', adminData.email.toLowerCase());
       return;
     }
 
