@@ -726,10 +726,12 @@ export const login = async (req, res) => {
       });
     }
 
-    // Regular login: Find user by email or employee number (for mobile app)
+    // Regular login: Find user by username, email or employee number
+    // Username can be used as email (case-insensitive - email is stored lowercase)
+    const loginIdentifier = username || email;
     const user = await User.findOne({
       $or: [
-        email ? { email } : null,
+        loginIdentifier ? { email: loginIdentifier.toLowerCase() } : null,
         employeeNumber ? { employeeNumber } : null
       ].filter(Boolean)
     });

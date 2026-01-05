@@ -31,7 +31,7 @@ const createCustomAdmin = async () => {
     // Note: Email will be stored in lowercase due to User model schema (lowercase: true)
     const adminData = {
       employeeNumber: 'admin',
-      email: 'yazan', // Admin login email (stored in lowercase)
+      email: 'Yazen', // Admin login email (stored in lowercase as 'yazen')
       password: 'Yazan$2004', // Admin password
       fullName: 'System Administrator',
       role: 'admin',
@@ -91,7 +91,7 @@ const createCustomAdmin = async () => {
     console.log('   Role: admin');
     console.log('   Full Name:', adminUser.fullName);
     console.log('\n📝 Login credentials:');
-    console.log('   Email: Yazan');
+    console.log('   Username/Email: Yazen');
     console.log('   Password: Yazan$2004');
   } catch (error) {
     console.error('❌ Error creating admin user:', error);

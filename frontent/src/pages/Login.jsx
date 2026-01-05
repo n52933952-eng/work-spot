@@ -99,7 +99,7 @@ const Login = () => {
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="admin"
+                    placeholder=""
                     size="lg"
                   />
                 </FormControl>
@@ -110,7 +110,7 @@ const Login = () => {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="admin"
+                    placeholder=""
                     size="lg"
                   />
                 </FormControl>
@@ -130,7 +130,7 @@ const Login = () => {
           </Box>
 
           <Text fontSize="sm" color="gray.500">
-            اسم المستخدم: admin | كلمة المرور: admin
+            اسم المستخدم:  | كلمة المرور: 
           </Text>
         </VStack>
       </Container>

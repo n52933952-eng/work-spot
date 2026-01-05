@@ -326,7 +326,8 @@ export const getTodayAttendance = async (req, res) => {
         const checkInTimeFormatted = new Date(att.checkInTime).toLocaleTimeString('ar-JO', { 
           hour: '2-digit', 
           minute: '2-digit',
-          hour12: true 
+          hour12: true,
+          timeZone: 'Asia/Amman'
         });
 
         const employeeData = {
@@ -349,7 +350,8 @@ export const getTodayAttendance = async (req, res) => {
             checkOutTime: att.checkOutTime ? new Date(att.checkOutTime).toLocaleTimeString('ar-JO', { 
               hour: '2-digit', 
               minute: '2-digit',
-              hour12: true 
+              hour12: true,
+              timeZone: 'Asia/Amman'
             }) : null
           });
         } else {
@@ -358,7 +360,8 @@ export const getTodayAttendance = async (req, res) => {
             checkOutTime: att.checkOutTime ? new Date(att.checkOutTime).toLocaleTimeString('ar-JO', { 
               hour: '2-digit', 
               minute: '2-digit',
-              hour12: true 
+              hour12: true,
+              timeZone: 'Asia/Amman'
             }) : null
           });
         }
@@ -368,7 +371,8 @@ export const getTodayAttendance = async (req, res) => {
           const checkOutTimeFormatted = new Date(att.checkOutTime).toLocaleTimeString('ar-JO', { 
             hour: '2-digit', 
             minute: '2-digit',
-            hour12: true 
+            hour12: true,
+            timeZone: 'Asia/Amman'
           });
           
           const workingHours = att.workingHours || 0;
@@ -466,12 +470,14 @@ export const getTodayAttendance = async (req, res) => {
           checkInTime: new Date(att.checkInTime).toLocaleTimeString('ar-JO', {
             hour: '2-digit',
             minute: '2-digit',
-            hour12: true
+            hour12: true,
+            timeZone: 'Asia/Amman'
           }),
           checkOutTime: att.checkOutTime ? new Date(att.checkOutTime).toLocaleTimeString('ar-JO', {
             hour: '2-digit',
             minute: '2-digit',
-            hour12: true
+            hour12: true,
+            timeZone: 'Asia/Amman'
           }) : null
         });
       }
