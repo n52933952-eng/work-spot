@@ -25,7 +25,7 @@ const Login = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
-
+    console.log(loading)
     try {
       // Simple admin login: just send username and password
       const response = await authAPI.login({
