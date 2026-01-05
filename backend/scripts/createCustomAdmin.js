@@ -43,11 +43,14 @@ const createCustomAdmin = async () => {
       approvalStatus: 'approved'
     };
 
-    // Check if admin already exists
+    // Check if admin already exists (case-insensitive email search)
+    // Look for admin by employeeNumber 'admin' OR any admin role user OR email 'yazan'/'Yazen'
     const existingAdmin = await User.findOne({
       $or: [
-        { email: adminData.email },
-        { employeeNumber: adminData.employeeNumber },
+        { employeeNumber: 'admin' },
+        { email: 'yazan' },
+        { email: 'Yazen' },
+        { email: adminData.email.toLowerCase() },
         { role: 'admin', email: { $exists: true } }
       ]
     });
@@ -58,10 +61,10 @@ const createCustomAdmin = async () => {
       console.log('   Employee Number:', existingAdmin.employeeNumber);
       console.log('   Role:', existingAdmin.role);
       
-      // Update existing admin with new password
+      // Update existing admin with new password and email
       const hashedPassword = await bcrypt.hash(adminData.password, 10);
       existingAdmin.password = hashedPassword;
-      existingAdmin.email = adminData.email;
+      existingAdmin.email = adminData.email.toLowerCase(); // Ensure lowercase: "Yazen" -> "yazen"
       existingAdmin.fullName = adminData.fullName;
       existingAdmin.role = 'admin';
       existingAdmin.department = adminData.department;
